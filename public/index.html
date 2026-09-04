@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Speaking Assistant</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Speaking Assistant</p>
+            <h1>口语练习室</h1>
+          </div>
+          <div class="status-pill" id="keyStatus">
+            <span class="status-dot idle"></span>
+            <span>检查中</span>
+          </div>
+        </header>
+
+        <nav class="tabs" aria-label="练习模式">
+          <button class="tab active" data-tab="english">英语实时对话</button>
+          <button class="tab" data-tab="mandarin">中文普通话</button>
+          <button class="tab" data-tab="records">练习记录</button>
+          <button class="tab" data-tab="stats">练习统计</button>
+          <button class="tab" data-tab="config">模型配置</button>
+        </nav>
+
+        <section class="panel active" id="englishPanel">
+          <section class="topic-shelf" aria-label="英语练习主题">
+            <div class="topic-shelf-head">
+              <h2>新加坡留学生情景</h2>
+              <button class="small-action" id="shuffleEnglishTopics">换一组</button>
+            </div>
+            <div class="topic-grid" id="englishTopics"></div>
+          </section>
+
+          <div class="control-grid">
+            <label>
+              练习主题
+              <input id="englishTopic" value="travel plans and surprising places" />
+            </label>
+            <label>
+              声音
+              <select id="voiceSelect">
+                <option value="marin">marin</option>
+                <option value="cedar">cedar</option>
+                <option value="coral">coral</option>
+                <option value="sage">sage</option>
+                <option value="verse">verse</option>
+              </select>
+            </label>
+            <label>
+              节奏
+              <select id="paceSelect">
+                <option value="lively">自然活泼</option>
+                <option value="calm">慢一点</option>
+                <option value="quick">快一点</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="stage">
+            <canvas id="signalCanvas" width="900" height="340" aria-label="实时音频状态"></canvas>
+            <div class="session-state">
+              <span class="status-dot idle" id="englishDot"></span>
+              <strong id="englishState">未连接</strong>
+            </div>
+          </div>
+
+          <div class="primary-actions">
+            <button class="primary" id="startEnglish">开始对话</button>
+            <button id="stopEnglish" disabled>结束并保存</button>
+            <button id="analyzeEnglish" disabled>点评分析</button>
+          </div>
+
+          <div class="transcript" id="englishTranscript" aria-live="polite"></div>
+          <div class="analysis" id="englishAnalysis"></div>
+        </section>
+
+        <section class="panel" id="mandarinPanel">
+          <div class="reading-actions">
+            <button class="primary" id="generateReading">随机抽题</button>
+            <div class="timer" id="readingTimer">--</div>
+          </div>
+
+          <article class="reading-card">
+            <h2 id="readingTitle">等待抽题</h2>
+            <p id="readingText"></p>
+          </article>
+
+          <div class="reading-record-actions">
+            <button id="startReading" disabled>开始录音</button>
+            <button id="stopReading" disabled>停止并保存</button>
+            <button id="analyzeReading" disabled>点评分析</button>
+          </div>
+
+          <div class="mandarin-meter">
+            <div>
+              <strong id="mandarinRecordState">未录音</strong>
+              <span id="mandarinElapsed">00:00</span>
+            </div>
+            <div class="meter-track" aria-label="普通话录音音量">
+              <span id="mandarinLevelBar"></span>
+            </div>
+            <span id="mandarinDb">-- dB</span>
+          </div>
+
+          <div class="analysis" id="mandarinAnalysis"></div>
+        </section>
+
+        <section class="panel" id="recordsPanel">
+          <div class="records-head">
+            <div>
+              <h2>练习记录</h2>
+              <p class="muted">每段练习会保存为一个独立文件夹，音频、文本和点评都在同一个目录里。</p>
+            </div>
+            <button class="primary" id="refreshRecords">刷新记录</button>
+          </div>
+          <div class="records-list" id="recordsList"></div>
+        </section>
+
+        <section class="panel" id="statsPanel">
+          <div class="records-head">
+            <div>
+              <h2>练习统计</h2>
+              <p class="muted">按天统计练习时长，并追踪每条记录的得分变化。</p>
+            </div>
+            <button class="primary" id="refreshStats">刷新统计</button>
+          </div>
+          <div class="stats-summary" id="statsSummary"></div>
+          <section class="stats-block">
+            <div class="stats-block-head">
+              <h3>每日练习时长</h3>
+              <span>英语 / 中文</span>
+            </div>
+            <div class="daily-list" id="dailyStats"></div>
+          </section>
+          <section class="stats-block">
+            <div class="stats-block-head">
+              <h3>得分趋势</h3>
+              <span>每条记录</span>
+            </div>
+            <div class="score-trend" id="scoreTrend"></div>
+          </section>
+        </section>
+
+        <section class="panel" id="configPanel">
+          <div class="config-layout">
+            <div>
+              <h2>模型配置</h2>
+              <p class="muted">本地开发时保存在服务器端 `.env.local`，浏览器不会读取已保存的密钥。</p>
+            </div>
+            <form id="apiKeyForm" class="key-form">
+              <label>
+                OPENAI_API_KEY
+                <input id="apiKeyInput" type="password" autocomplete="off" placeholder="sk-..." />
+              </label>
+              <button class="primary" type="submit">保存 Key</button>
+              <p class="form-note" id="configMessage"></p>
+            </form>
+            <dl class="model-list">
+              <div>
+                <dt>Realtime</dt>
+                <dd id="realtimeModel">-</dd>
+              </div>
+              <div>
+                <dt>Text / Analysis</dt>
+                <dd id="textModel">-</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

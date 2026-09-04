@@ -1,4 +1,4 @@
-# Speaking Assistant
+# Speak Room
 
 A local browser app for two speaking workflows:
 

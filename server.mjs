@@ -173,7 +173,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Speaking Assistant is running at http://${host}:${port}`);
+  console.log(`Speak Room is running at http://${host}:${port}`);
 });
 
 async function createRealtimeClientSecret(apiKey, options) {
@@ -208,7 +208,7 @@ async function createRealtimeCall(apiKey, sdp, options) {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "OpenAI-Safety-Identifier": "local-speaking-assistant",
+      "OpenAI-Safety-Identifier": "local-speak-room",
     },
     body: form,
   });

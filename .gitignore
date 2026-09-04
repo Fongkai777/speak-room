@@ -5,5 +5,5 @@ node_modules/
 practice-sessions/
 recordings/
 output/
-tmp_pdf_render-*.png
+tmp_pdf_*.png
 npm-debug.log*

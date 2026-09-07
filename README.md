@@ -1,23 +1,30 @@
 # Speak Room
 
-A local browser app for two speaking workflows:
+[English version](README.en.md)
 
-- English realtime conversation with a live voice companion, WebRTC audio, transcripts, recording, and coaching analysis from the user-only microphone track when available.
-- Mandarin reading practice with a local Putonghua-test-style random reading bank, target-time countdown, recording meter, and pronunciation-focused feedback.
-- Scenario topic picks tailored for English speaking practice as a Chinese international student studying in Singapore.
+Speak Room 是一个本地运行的口语练习网页应用，面向英语实时对话练习和中文普通话朗读练习。它把录音、文本、点评、分数和练习统计保存在本机，适合做长期复练。
 
-## Setup
+## 功能概览
 
-1. Put your key in `.env.local`:
+- 英语实时对话：使用 OpenAI Realtime API 和 WebRTC，实现低延迟语音对话。
+- 英语随手翻译：在实时对话页内支持自动判断、中转英、英转中。
+- 普通话朗读：从本地普通话考试风格素材库随机抽题，按目标时长倒计时录音。
+- 点评分析：保存练习后可生成发音、清晰度、节奏、表达和复练建议。
+- 练习记录：每段练习独立保存音频、文本、点评和元数据。
+- 练习统计：按天统计中英文练习时长、得分趋势，并在左侧日历显示每月练习日期。
+- 模型配置：本地保存 `OPENAI_API_KEY`，并显示当前 Realtime / 文本模型配置。
+
+## 本地启动
+
+1. 创建 `.env.local`：
 
    ```bash
    OPENAI_API_KEY="sk-..."
    ```
 
-   The app also includes a local-only Config page that can save `OPENAI_API_KEY` to `.env.local`.
-   The key is read only by `server.mjs`; the browser receives short-lived Realtime client secrets instead of the project key.
+   也可以在网页的“模型配置”页保存 API Key。Key 只会写入本地 `.env.local`，浏览器不会读取明文 Key。
 
-2. Optional model overrides:
+2. 可选模型配置：
 
    ```bash
    OPENAI_REALTIME_MODEL="gpt-realtime-2.1-mini"
@@ -26,61 +33,98 @@ A local browser app for two speaking workflows:
    PORT=3000
    ```
 
-3. Start local development:
+3. 启动服务：
 
    ```bash
    npm run dev
    ```
 
-4. Open `http://localhost:3000`.
+4. 打开网页：
 
-## Current OpenAI API Notes
+   ```text
+   http://localhost:3000
+   ```
 
-This app follows the current Realtime WebRTC unified interface pattern from official OpenAI documentation:
+如果使用当前本地开发端口，也可以用：
 
-- The browser never receives the standard project API key.
-- The browser creates a `RTCPeerConnection`, adds the microphone track, and sends its SDP offer to the local `/api/realtime-connect` endpoint.
-- The server combines the SDP with a `type: "realtime"` session config and calls `POST /v1/realtime/calls` using `OPENAI_API_KEY`.
-- The server returns the SDP answer to the browser.
-- Realtime audio output is handled by WebRTC media tracks; transcript and lifecycle events are handled through the `oai-events` data channel.
+```bash
+PORT=3001 npm run dev
+```
 
-Model guidance:
+然后打开：
 
-- Realtime voice defaults to `gpt-realtime-2.1-mini`, a lower-cost realtime model for speech-to-speech practice.
-- Text generation and analysis defaults to `gpt-5.6-luna` for lower-cost local development; override with `OPENAI_TEXT_MODEL`.
-- Transcription defaults to `gpt-4o-mini-transcribe`; use `gpt-4o-transcribe` when you want higher accuracy at a higher cost.
+```text
+http://127.0.0.1:3001
+```
 
-Sources checked:
+## 项目结构
 
-- https://developers.openai.com/api/docs/guides/realtime-webrtc
-- https://developers.openai.com/api/docs/models
-- https://developers.openai.com/api/docs/models/gpt-realtime-2.1
-- https://developers.openai.com/api/docs/models/gpt-realtime-2.1-mini
-- https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe
-- https://developers.openai.com/api/docs/models/gpt-4o-transcribe
+```text
+.
+├── server.mjs
+├── package.json
+├── public/
+│   ├── index.html
+│   ├── app.js
+│   └── styles.css
+└── practice-sessions/
+    └── <session-id>/
+        ├── audio.webm
+        ├── user_audio.webm
+        ├── transcript.txt
+        ├── reference.txt
+        ├── analysis.json
+        └── metadata.json
+```
 
-## Responsibilities
+`practice-sessions/` 是本地练习记录目录，已经被 `.gitignore` 忽略，不会提交到 GitHub。
 
-Browser/client:
+## 前后端职责
 
-- Requests microphone permission.
-- Starts and stops WebRTC sessions.
-- Plays realtime assistant audio.
-- Records practice audio with `MediaRecorder`.
-- Displays transcripts for English, countdowns, microphone level, elapsed recording time, and visible session state.
+浏览器端负责：
 
-Server:
+- 请求麦克风权限。
+- 建立英语实时对话的 WebRTC 连接。
+- 播放模型返回的实时语音。
+- 使用 `MediaRecorder` 保存练习音频。
+- 显示实时状态、转写文本、录音时长、音量、练习记录、统计图和日历。
+- 调用本地服务端接口做翻译、分析、保存和删除记录。
 
-- Loads and stores `OPENAI_API_KEY`.
-- Mints short-lived Realtime client secrets.
-- Serves Mandarin reading material from a local Putonghua-test-style practice bank.
-- Transcribes saved recordings.
-- Produces feedback analysis.
-- Saves each practice session under `practice-sessions/<session-id>/`.
+服务端负责：
 
-## Saved Sessions
+- 从 `.env.local` 读取 `OPENAI_API_KEY`。
+- 创建 Realtime 会话连接，避免浏览器接触项目 API Key。
+- 调用 OpenAI Responses API 做翻译和点评。
+- 调用转写模型处理保存后的录音。
+- 管理本地练习记录目录。
 
-New sessions are grouped into one managed directory per practice:
+## OpenAI API 使用
+
+英语实时对话使用 Realtime API 的 WebRTC 模式：
+
+- 浏览器创建 `RTCPeerConnection`。
+- 浏览器添加麦克风音轨并生成 SDP offer。
+- 服务端通过 `/api/realtime-connect` 把 SDP 和 Realtime session 配置发送到 OpenAI。
+- OpenAI 返回 SDP answer 后，浏览器开始收发实时音频。
+- 对话事件通过 `oai-events` data channel 接收，用于显示文本转写和连接状态。
+
+文本翻译、练习点评使用 Responses API。
+
+录音转写默认使用：
+
+```text
+gpt-4o-mini-transcribe
+```
+
+如果需要更高准确率，可以配置为：
+
+```text
+gpt-4o-transcribe
+```
+
+## 数据保存
+
+每次保存练习都会生成一个独立目录，例如：
 
 ```text
 practice-sessions/
@@ -92,56 +136,77 @@ practice-sessions/
     metadata.json
 ```
 
-Mandarin reading sessions also include `reference.txt` when selected reading text is present. The Records tab can replay audio, expand or collapse saved text and feedback, rerun feedback analysis, and delete a whole saved session folder.
-For English sessions, `audio.webm` is the playable mixed conversation and `user_audio.webm` is used for pronunciation-focused reanalysis.
+英语练习：
 
-Older files created before this directory layout may still exist in `recordings/`; they can be copied into `practice-sessions/` without deleting the original audio.
+- `audio.webm`：可播放的混合对话音频。
+- `user_audio.webm`：用户麦克风单独录音，用于更有针对性的发音点评。
+- `transcript.txt`：对话文本。
+- `analysis.json`：点评结果。
+- `metadata.json`：标题、时长、分数、文件名等元数据。
 
-## Developer Notes
+中文普通话练习：
 
-Latency:
+- `audio.webm`：朗读录音。
+- `reference.txt`：朗读原文。
+- `analysis.json`：点评结果。
+- `metadata.json`：标题、时长、分数、文件名等元数据。
 
-- Use WebRTC for the English realtime workflow; avoid request/response audio loops for live conversation.
-- The session uses semantic VAD with interruption enabled so the user can naturally cut in.
-- Keep assistant turns short. Long spoken responses increase latency and make turn-taking feel heavy.
+## 练习统计
 
-Session lifecycle:
+统计页包含：
 
-- Realtime client secrets are short-lived and minted on each session start.
-- Closing a session stops the peer connection, data channel, local tracks, remote tracks, and recorder.
-- If the connection fails, end the current session and mint a fresh client secret.
+- 总练习时长。
+- 英语练习时长。
+- 中文练习时长。
+- 平均分。
+- 每日练习时长柱状图。
+- 中英文分开的得分趋势折线图。
 
-Permissions:
+页面左侧还有固定练习日历：
 
-- Browsers require a user gesture before microphone capture.
-- Use `localhost` or HTTPS for `getUserMedia`.
-- The API key configuration page is intended for local development only; production apps should use a secret manager and authenticated settings surface.
+- 蓝色方格表示当天有英语练习。
+- 红色方格表示当天有中文练习。
+- 蓝红双色方格表示当天两种都练了。
+- 月份可下拉选择。
 
-Error recovery:
+## 开发注意事项
 
-- If token creation fails, confirm `.env.local` has `OPENAI_API_KEY`.
-- If WebRTC connection fails, retry with a fresh session.
-- If transcription fails, keep the saved audio and retry analysis later.
-- If browser recording is unavailable, check MediaRecorder support for the current browser and audio MIME type.
+延迟：
 
-Mandarin pronunciation analysis:
+- 英语实时对话必须走 WebRTC，不要改成普通请求响应式音频循环。
+- Realtime 会话开启了语义 VAD 和打断能力，方便自然接话。
+- 模型回复应保持短句，否则语音等待时间会变长。
 
-- The app uses transcription internally to compare the selected reading text with what the model heard.
-- The UI does not show the recognized transcript for Mandarin practice by default.
-- Feedback focuses on likely unclear words, flat/retroflex initials, front/back nasals, tone stability, mouth opening, tongue placement cues, rhythm, and breath.
-- This is useful coaching feedback, not a certified phoneme-level Putonghua test score.
+会话生命周期：
 
-## Validation Checklist
+- 每次开始英语对话都应创建新的 Realtime 连接。
+- 结束会话时需要关闭 peer connection、data channel、本地音轨、远端音轨和录音器。
+- 如果连接关闭或失败，应重新开始会话，而不是复用旧连接。
 
-- Config page shows `Key 已配置` after saving or loading `.env.local`.
-- English session prompts for microphone permission.
-- English session connects, plays assistant audio, and displays transcript deltas.
-- Speaking over the assistant interrupts naturally or recovers cleanly.
-- Ending English practice saves audio, transcript, feedback, and metadata under one `practice-sessions/` folder.
-- New English sessions save a user-only microphone track for more useful pronunciation and clarity feedback.
-- The Records tab can rerun feedback analysis and delete a saved practice session after confirmation.
-- English analysis produces a score, summary, and drills.
-- Mandarin random selection returns title, text, and a target countdown without an OpenAI request.
-- Mandarin recording shows elapsed time and approximate microphone dB, then stops automatically when the countdown reaches zero.
-- Mandarin analysis uses transcription internally, but the visible result focuses on pronunciation feedback instead of recognized text.
-- Reloading the page and starting a new session mints a fresh Realtime client secret.
+权限：
+
+- 麦克风权限需要用户在浏览器里主动授权。
+- `getUserMedia` 需要 `localhost`、`127.0.0.1` 或 HTTPS 环境。
+- 这个项目的 Key 配置页只适合本地开发，线上部署应改用密钥管理服务。
+
+错误恢复：
+
+- 如果显示未配置 Key，检查 `.env.local` 或“模型配置”页。
+- 如果英语实时连接失败，刷新页面后重新开始。
+- 如果点评失败，音频仍然会保存在记录目录，可以在“练习记录”里重新点评。
+- 如果浏览器无法录音，检查当前浏览器是否支持 `MediaRecorder`。
+
+## 验证清单
+
+- “模型配置”页保存 Key 后显示 `Key 已配置`。
+- 英语实时对话能请求麦克风权限。
+- 英语实时对话能听到模型语音，并显示文本转写。
+- 对话中打断模型时，连接能保持正常。
+- “随手翻译”能完成中转英、英转中和自动判断。
+- 结束英语练习后，记录目录里出现音频、文本、点评和元数据。
+- 中文随机抽题能显示标题、正文和倒计时。
+- 中文录音时能显示音量和录制时长。
+- 中文倒计时结束后能自动停止录音。
+- 练习记录能展开文本、展开点评、重新点评和删除。
+- 练习统计能显示柱状图、折线图和左侧月历。
+- 左侧日历的月份下拉可以切换不同月份。

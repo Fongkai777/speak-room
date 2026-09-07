@@ -20,15 +20,35 @@
           </div>
         </header>
 
-        <nav class="tabs" aria-label="练习模式">
-          <button class="tab active" data-tab="english">英语实时对话</button>
-          <button class="tab" data-tab="mandarin">中文普通话</button>
-          <button class="tab" data-tab="records">练习记录</button>
-          <button class="tab" data-tab="stats">练习统计</button>
-          <button class="tab" data-tab="config">模型配置</button>
-        </nav>
+        <div class="workspace-body">
+          <aside class="side-calendar" aria-label="练习日历">
+            <section class="stats-block calendar-block">
+              <div class="stats-block-head">
+                <h3>练习日历</h3>
+                <span>每月练习日期</span>
+              </div>
+              <div class="calendar-legend">
+                <span><i class="english-dot"></i>英语</span>
+                <span><i class="mandarin-dot"></i>中文</span>
+              </div>
+              <label class="calendar-month-picker">
+                月份
+                <select id="calendarMonthSelect"></select>
+              </label>
+              <div class="practice-calendar" id="practiceCalendar"></div>
+            </section>
+          </aside>
 
-        <section class="panel active" id="englishPanel">
+          <div class="workspace-main">
+            <nav class="tabs" aria-label="练习模式">
+              <button class="tab active" data-tab="english">英语实时对话</button>
+              <button class="tab" data-tab="mandarin">中文普通话</button>
+              <button class="tab" data-tab="records">练习记录</button>
+              <button class="tab" data-tab="stats">练习统计</button>
+              <button class="tab" data-tab="config">模型配置</button>
+            </nav>
+
+            <section class="panel active" id="englishPanel">
           <section class="topic-shelf" aria-label="英语练习主题">
             <div class="topic-shelf-head">
               <h2>新加坡留学生情景</h2>
@@ -62,6 +82,28 @@
             </label>
           </div>
 
+          <section class="translator-card" aria-label="中英文翻译器">
+            <div class="translator-head">
+              <div>
+                <h2>随手翻译</h2>
+                <p class="muted">对话中想查一句话时用，支持中转英 / 英转中。</p>
+              </div>
+              <select id="translateDirection" aria-label="翻译方向">
+                <option value="auto">自动判断</option>
+                <option value="zh-en">中转英</option>
+                <option value="en-zh">英转中</option>
+              </select>
+            </div>
+            <div class="translator-grid">
+              <textarea id="translateInput" rows="3" placeholder="输入要翻译的中文或英文"></textarea>
+              <output id="translateOutput">翻译结果会显示在这里</output>
+            </div>
+            <div class="translator-actions">
+              <button class="primary" id="translateButton" type="button">翻译</button>
+              <button id="clearTranslation" type="button">清空</button>
+            </div>
+          </section>
+
           <div class="stage">
             <canvas id="signalCanvas" width="900" height="340" aria-label="实时音频状态"></canvas>
             <div class="session-state">
@@ -78,9 +120,9 @@
 
           <div class="transcript" id="englishTranscript" aria-live="polite"></div>
           <div class="analysis" id="englishAnalysis"></div>
-        </section>
+            </section>
 
-        <section class="panel" id="mandarinPanel">
+            <section class="panel" id="mandarinPanel">
           <div class="reading-actions">
             <button class="primary" id="generateReading">随机抽题</button>
             <div class="timer" id="readingTimer">--</div>
@@ -109,9 +151,9 @@
           </div>
 
           <div class="analysis" id="mandarinAnalysis"></div>
-        </section>
+            </section>
 
-        <section class="panel" id="recordsPanel">
+            <section class="panel" id="recordsPanel">
           <div class="records-head">
             <div>
               <h2>练习记录</h2>
@@ -120,9 +162,9 @@
             <button class="primary" id="refreshRecords">刷新记录</button>
           </div>
           <div class="records-list" id="recordsList"></div>
-        </section>
+            </section>
 
-        <section class="panel" id="statsPanel">
+            <section class="panel" id="statsPanel">
           <div class="records-head">
             <div>
               <h2>练习统计</h2>
@@ -130,24 +172,24 @@
             </div>
             <button class="primary" id="refreshStats">刷新统计</button>
           </div>
-          <div class="stats-summary" id="statsSummary"></div>
-          <section class="stats-block">
-            <div class="stats-block-head">
-              <h3>每日练习时长</h3>
-              <span>英语 / 中文</span>
-            </div>
-            <div class="daily-list" id="dailyStats"></div>
-          </section>
-          <section class="stats-block">
-            <div class="stats-block-head">
-              <h3>得分趋势</h3>
-              <span>每条记录</span>
-            </div>
-            <div class="score-trend" id="scoreTrend"></div>
-          </section>
-        </section>
+              <div class="stats-summary" id="statsSummary"></div>
+              <section class="stats-block">
+                <div class="stats-block-head">
+                  <h3>每日练习时长</h3>
+                  <span>英语 / 中文</span>
+                </div>
+                <div class="daily-list" id="dailyStats"></div>
+              </section>
+              <section class="stats-block">
+                <div class="stats-block-head">
+                  <h3>得分趋势</h3>
+                  <span>每条记录</span>
+                </div>
+                <div class="score-trend" id="scoreTrend"></div>
+              </section>
+            </section>
 
-        <section class="panel" id="configPanel">
+            <section class="panel" id="configPanel">
           <div class="config-layout">
             <div>
               <h2>模型配置</h2>
@@ -172,7 +214,9 @@
               </div>
             </dl>
           </div>
-        </section>
+            </section>
+          </div>
+        </div>
       </section>
     </main>
 

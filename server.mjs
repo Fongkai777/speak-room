@@ -129,6 +129,15 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, result);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/translate") {
+      const apiKey = getApiKey();
+      if (!apiKey) return sendJson(res, 401, { error: "OPENAI_API_KEY is not configured." });
+
+      const body = await readJson(req);
+      const result = await translatePhrase(apiKey, body);
+      return sendJson(res, 200, result);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/sessions") {
       const body = await readJson(req, 30 * 1024 * 1024);
       const saved = await savePracticeSession(body);
@@ -399,6 +408,33 @@ async function reanalyzePracticeSession(apiKey, rawSessionId) {
     analysis: result.analysis,
     durationMs: metadata.durationMs,
   });
+}
+
+async function translatePhrase(apiKey, body) {
+  const text = String(body.text || "").trim();
+  const direction = ["zh-en", "en-zh", "auto"].includes(body.direction) ? body.direction : "auto";
+  if (!text) throw new Error("请输入要翻译的内容。");
+  if (text.length > 1200) throw new Error("翻译内容太长，请控制在 1200 字以内。");
+
+  const target =
+    direction === "zh-en"
+      ? "Translate Chinese into natural spoken English."
+      : direction === "en-zh"
+        ? "Translate English into clear Simplified Chinese."
+        : "Detect whether the input is Chinese or English. If Chinese, translate it into natural spoken English. If English, translate it into clear Simplified Chinese.";
+
+  const prompt = `${target}
+
+Context: The user is doing live English speaking practice. Prefer concise, speakable wording over literal translation. If translating into English, include one natural version only unless the input truly needs an alternative.
+
+Input:
+${text}
+
+Return only the translation text.`;
+
+  const data = await createTextResponse(apiKey, prompt, 500);
+  const translated = extractResponseText(data).trim();
+  return { direction, translated: translated || "没有返回翻译结果。" };
 }
 
 async function createTextResponse(apiKey, input, maxOutputTokens, format) {

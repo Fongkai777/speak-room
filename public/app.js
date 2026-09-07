@@ -38,10 +38,19 @@ const state = {
     meterContext: null,
     meterTimer: null,
   },
+  calendar: {
+    selectedMonth: "",
+    sessions: [],
+  },
 };
 
 const topicLibrary = {
   english: [
+    {
+      title: "随便聊聊",
+      prompt: "a relaxed open conversation where the coach asks me about my day, recent thoughts, small worries, interests, and anything I want to talk about",
+      detail: "日常闲聊、自然接话、自由表达",
+    },
     {
       title: "课堂发言",
       prompt: "speaking up in a Singapore university tutorial when I partly disagree with a classmate",
@@ -125,8 +134,15 @@ const els = {
   mandarinDb: $("#mandarinDb"),
   recordsList: $("#recordsList"),
   statsSummary: $("#statsSummary"),
+  calendarMonthSelect: $("#calendarMonthSelect"),
+  practiceCalendar: $("#practiceCalendar"),
   dailyStats: $("#dailyStats"),
   scoreTrend: $("#scoreTrend"),
+  translateDirection: $("#translateDirection"),
+  translateInput: $("#translateInput"),
+  translateOutput: $("#translateOutput"),
+  translateButton: $("#translateButton"),
+  clearTranslation: $("#clearTranslation"),
   realtimeModel: $("#realtimeModel"),
   textModel: $("#textModel"),
   configMessage: $("#configMessage"),
@@ -140,9 +156,12 @@ async function init() {
   bindMandarin();
   bindConfig();
   bindTopics();
+  bindCalendar();
+  bindTranslator();
   renderTopicShelf("english");
   drawSignal();
   await refreshConfig();
+  loadPracticeCalendar();
 }
 
 function bindTabs() {
@@ -194,6 +213,45 @@ function bindTopics() {
     topicPage.english += 1;
     renderTopicShelf("english");
   });
+}
+
+function bindCalendar() {
+  els.calendarMonthSelect?.addEventListener("change", () => {
+    state.calendar.selectedMonth = els.calendarMonthSelect.value;
+    renderPracticeCalendar(state.calendar.sessions);
+  });
+}
+
+function bindTranslator() {
+  els.translateButton?.addEventListener("click", translateInlineText);
+  els.clearTranslation?.addEventListener("click", () => {
+    els.translateInput.value = "";
+    els.translateOutput.textContent = "翻译结果会显示在这里";
+  });
+}
+
+async function translateInlineText() {
+  const text = els.translateInput.value.trim();
+  if (!text) {
+    els.translateOutput.textContent = "先输入一句要翻译的话。";
+    return;
+  }
+
+  els.translateButton.disabled = true;
+  els.translateButton.textContent = "翻译中";
+  els.translateOutput.textContent = "翻译中...";
+  try {
+    const result = await api("/api/translate", {
+      text,
+      direction: els.translateDirection.value,
+    });
+    els.translateOutput.textContent = result.translated || "没有返回翻译结果。";
+  } catch (error) {
+    els.translateOutput.textContent = error.message;
+  } finally {
+    els.translateButton.disabled = false;
+    els.translateButton.textContent = "翻译";
+  }
 }
 
 function renderTopicShelf(mode) {
@@ -364,6 +422,7 @@ async function stopEnglishSession() {
   });
   state.english.sessionId = saved?.id || "";
   loadRecords();
+  loadPracticeCalendar();
   setEnglishState("idle", "已保存");
   $("#startEnglish").disabled = false;
   $("#stopEnglish").disabled = true;
@@ -399,6 +458,7 @@ async function analyzeEnglishSession() {
     });
     state.english.sessionId = saved?.id || state.english.sessionId;
     loadRecords();
+    loadPracticeCalendar();
     setEnglishState("idle", "分析完成");
   } catch (error) {
     setEnglishState("error", error.message);
@@ -512,6 +572,7 @@ async function stopReadingRecording(save) {
       });
       state.mandarin.sessionId = saved?.id || "";
       loadRecords();
+      loadPracticeCalendar();
     }, 100);
   }
 }
@@ -542,6 +603,7 @@ async function analyzeReadingSession() {
     });
     state.mandarin.sessionId = saved?.id || state.mandarin.sessionId;
     loadRecords();
+    loadPracticeCalendar();
   } catch (error) {
     els.mandarinAnalysis.textContent = error.message;
   }
@@ -561,7 +623,7 @@ async function loadRecords() {
 }
 
 async function loadStats() {
-  if (!els.statsSummary || !els.dailyStats || !els.scoreTrend) return;
+  if (!els.statsSummary || !els.practiceCalendar || !els.dailyStats || !els.scoreTrend) return;
   els.statsSummary.innerHTML = `<div class="empty-state">加载统计中</div>`;
   els.dailyStats.innerHTML = "";
   els.scoreTrend.innerHTML = "";
@@ -573,6 +635,20 @@ async function loadStats() {
     renderStats(sessions);
   } catch (error) {
     els.statsSummary.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function loadPracticeCalendar() {
+  if (!els.practiceCalendar) return;
+  els.practiceCalendar.innerHTML = `<div class="empty-state">加载日历中</div>`;
+  try {
+    const response = await fetch("/api/sessions");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "无法加载练习日历");
+    const sessions = withPracticeNumbers(await hydrateSessionDurations(data.sessions || []));
+    renderPracticeCalendar(sessions);
+  } catch (error) {
+    els.practiceCalendar.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   }
 }
 
@@ -648,6 +724,7 @@ function withPracticeNumbers(sessions) {
 function renderStats(sessions) {
   if (!sessions.length) {
     els.statsSummary.innerHTML = `<div class="empty-state">还没有可统计的练习记录。</div>`;
+    els.practiceCalendar.innerHTML = `<div class="empty-state">还没有可显示的练习日期。</div>`;
     els.dailyStats.innerHTML = "";
     els.scoreTrend.innerHTML = "";
     return;
@@ -682,7 +759,109 @@ function renderStats(sessions) {
   `;
 
   renderDailyStats(sessions);
+  renderPracticeCalendar(sessions);
   renderScoreTrend(scored);
+}
+
+function renderPracticeCalendar(sessions) {
+  state.calendar.sessions = sessions;
+  const dayGroups = new Map();
+  sessions.forEach((session) => {
+    const key = dateKey(session.createdAt || session.updatedAt);
+    if (key === "未知日期") return;
+    if (!dayGroups.has(key)) {
+      dayGroups.set(key, {
+        englishCount: 0,
+        mandarinCount: 0,
+        englishMs: 0,
+        mandarinMs: 0,
+      });
+    }
+    const day = dayGroups.get(key);
+    const isMandarin = session.mode === "mandarin";
+    if (isMandarin) {
+      day.mandarinCount += 1;
+      day.mandarinMs += Number(session.durationMs || 0);
+    } else {
+      day.englishCount += 1;
+      day.englishMs += Number(session.durationMs || 0);
+    }
+  });
+
+  if (!dayGroups.size) {
+    populateCalendarMonthSelect([currentMonthKey()], currentMonthKey(), true);
+    els.practiceCalendar.innerHTML = `<div class="empty-state">还没有可显示的练习日期。</div>`;
+    return;
+  }
+
+  const monthKeys = [...new Set([...dayGroups.keys()].map((key) => key.slice(0, 7)))]
+    .sort((a, b) => b.localeCompare(a));
+  const selectedMonth = monthKeys.includes(state.calendar.selectedMonth)
+    ? state.calendar.selectedMonth
+    : monthKeys[0];
+  state.calendar.selectedMonth = selectedMonth;
+  populateCalendarMonthSelect(monthKeys, selectedMonth, false);
+
+  els.practiceCalendar.innerHTML = renderCalendarMonth(selectedMonth, dayGroups);
+}
+
+function populateCalendarMonthSelect(monthKeys, selectedMonth, disabled) {
+  if (!els.calendarMonthSelect) return;
+  els.calendarMonthSelect.disabled = disabled;
+  els.calendarMonthSelect.innerHTML = monthKeys
+    .map((monthKey) => `<option value="${escapeHtml(monthKey)}">${escapeHtml(formatMonthKey(monthKey))}</option>`)
+    .join("");
+  els.calendarMonthSelect.value = selectedMonth;
+}
+
+function renderCalendarMonth(monthKey, dayGroups) {
+  const [yearText, monthText] = monthKey.split("-");
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  const firstDay = new Date(year, monthIndex, 1);
+  const leadingBlanks = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const cells = [];
+
+  for (let index = 0; index < leadingBlanks; index += 1) {
+    cells.push(`<div class="calendar-day is-empty" aria-hidden="true"></div>`);
+  }
+
+  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
+    const key = `${monthKey}-${String(dayNumber).padStart(2, "0")}`;
+    const day = dayGroups.get(key);
+    const classes = ["calendar-day"];
+    if (day) classes.push("has-practice");
+    if (day?.englishCount) classes.push("has-english");
+    if (day?.mandarinCount) classes.push("has-mandarin");
+    cells.push(`
+      <div class="${classes.join(" ")}" title="${escapeHtml(day ? calendarDayTitle(key, day) : key)}" aria-label="${escapeHtml(day ? calendarDayTitle(key, day) : key)}"></div>
+    `);
+  }
+
+  const monthSummary = [...dayGroups.entries()]
+    .filter(([key]) => key.startsWith(monthKey))
+    .reduce((summary, [, day]) => {
+      summary.days += 1;
+      summary.english += day.englishCount;
+      summary.mandarin += day.mandarinCount;
+      return summary;
+    }, { days: 0, english: 0, mandarin: 0 });
+
+  return `
+    <article class="calendar-month">
+      <div class="calendar-month-head">
+        <strong>本月练习</strong>
+        <span>${monthSummary.days} 天 · 英 ${monthSummary.english} 次 · 中 ${monthSummary.mandarin} 次</span>
+      </div>
+      <div class="calendar-weekdays" aria-hidden="true">
+        ${["一", "二", "三", "四", "五", "六", "日"].map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="calendar-grid">
+        ${cells.join("")}
+      </div>
+    </article>
+  `;
 }
 
 function renderDailyStats(sessions) {
@@ -963,6 +1142,7 @@ function bindRecordCard(card) {
       const scoreSlot = card.querySelector("[data-score-slot]");
       const scoreTag = scoreTagFromSession(fresh || saved || {});
       if (scoreSlot) scoreSlot.innerHTML = scoreTag ? `<span class="score-tag">${escapeHtml(scoreTag)}</span>` : "";
+      loadPracticeCalendar();
     } catch (error) {
       if (pre) pre.textContent = error.message;
     } finally {
@@ -986,6 +1166,7 @@ function bindRecordCard(card) {
       if (!els.recordsList.querySelector(".record-card")) {
         els.recordsList.innerHTML = `<div class="empty-state">还没有练习记录。完成一次保存后，这里会出现音频、文本和点评文件。</div>`;
       }
+      loadPracticeCalendar();
     } catch (error) {
       button.disabled = false;
       button.textContent = "删除记录";
@@ -1431,6 +1612,23 @@ function formatDateKey(key) {
   if (key === "未知日期") return key;
   const [, month, day] = key.split("-");
   return `${month}/${day}`;
+}
+
+function currentMonthKey() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthKey(key) {
+  const [year, month] = key.split("-");
+  return `${year}年${month}月`;
+}
+
+function calendarDayTitle(key, day) {
+  const lines = [key];
+  if (day.englishCount) lines.push(`英语 ${day.englishCount} 次 · ${formatDurationLong(day.englishMs)}`);
+  if (day.mandarinCount) lines.push(`中文 ${day.mandarinCount} 次 · ${formatDurationLong(day.mandarinMs)}`);
+  return lines.join("\n");
 }
 
 function scoreFromSession(session) {

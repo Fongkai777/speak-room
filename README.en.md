@@ -4,6 +4,8 @@
 
 Speak Room is a local browser app for English realtime conversation practice and Mandarin reading practice. It saves recordings, text, feedback, scores, and practice statistics on your own machine so you can review and repeat over time.
 
+The backend uses **Python + FastAPI**. The browser keeps the HTML / CSS / JavaScript interface and handles realtime audio. Node.js is not required.
+
 ## Features
 
 - English realtime conversation: low-latency voice practice with the OpenAI Realtime API and WebRTC.
@@ -15,6 +17,13 @@ Speak Room is a local browser app for English realtime conversation practice and
 - Model configuration: save `OPENAI_API_KEY` locally and view the current Realtime and text model settings.
 
 ## Local Setup
+
+Requires Python 3.9 or later (Python 3.12 is recommended for new environments). Install dependencies from the project directory:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
 
 1. Create `.env.local`:
 
@@ -30,39 +39,46 @@ Speak Room is a local browser app for English realtime conversation practice and
    OPENAI_REALTIME_MODEL="gpt-realtime-2.1-mini"
    OPENAI_TEXT_MODEL="gpt-5.6-luna"
    OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
-   PORT=3000
+   PORT=4000
    ```
 
 3. Start local development:
 
    ```bash
-   npm run dev
+   .venv/bin/python server.py
    ```
 
 4. Open:
 
    ```text
-   http://localhost:3000
+   http://localhost:4000
    ```
 
-For the current local development port, you can also run:
+The default port is 4000. You can also set the port explicitly:
 
 ```bash
-PORT=3001 npm run dev
+PORT=4000 .venv/bin/python server.py
 ```
 
 Then open:
 
 ```text
-http://127.0.0.1:3001
+http://127.0.0.1:4000
 ```
+
+Press `Ctrl+C` in the server terminal to stop. On Windows, use `.venv\Scripts\python.exe` instead of `.venv/bin/python`.
+
+When migrating from the Node.js version, stop the old server and use the Python command. Existing `.env.local` and `practice-sessions/` files need no conversion. The interface, topics, recordings, feedback, translations, charts, and calendar keep their existing behavior.
 
 ## Project Structure
 
 ```text
 .
-├── server.mjs
-├── package.json
+├── server.py
+├── requirements.txt
+├── practice_content.json
+├── tests/
+│   └── test_server.py
 ├── public/
 │   ├── index.html
 │   ├── app.js
@@ -90,13 +106,15 @@ The browser handles:
 - Displaying realtime status, transcripts, elapsed time, microphone level, records, charts, and the calendar.
 - Calling local server endpoints for translation, analysis, saving, and deletion.
 
-The server handles:
+The Python server (FastAPI + HTTPX) handles:
 
 - Reading `OPENAI_API_KEY` from `.env.local`.
 - Creating Realtime connections without exposing the project API key to the browser.
 - Calling the OpenAI Responses API for translation and feedback.
 - Calling transcription models for saved recordings.
 - Managing local practice-session folders.
+
+`practice_content.json` contains the existing reading bank, feedback prompts, and JSON schemas. It is read only by the server.
 
 ## OpenAI API Usage
 
@@ -107,6 +125,8 @@ English realtime conversation uses the Realtime API with WebRTC:
 - The server sends that SDP plus the Realtime session config to OpenAI through `/api/realtime-connect`.
 - OpenAI returns an SDP answer, and the browser starts realtime audio input/output.
 - Conversation events arrive over the `oai-events` data channel for transcript and lifecycle updates.
+
+The request format follows [OpenAI Realtime Create Call](https://developers.openai.com/api/reference/typescript/resources/realtime/subresources/calls/methods/create). Python negotiates the connection; realtime audio flows directly between the browser and OpenAI over WebRTC.
 
 Text translation and practice feedback use the Responses API.
 
@@ -121,6 +141,8 @@ For higher accuracy, configure:
 ```text
 gpt-4o-transcribe
 ```
+
+Feedback keeps the existing approach: transcribe the recording, then generate suggestions from text and available low-confidence fragments. This is not phoneme-level pronunciation scoring and cannot establish exact tongue position or definite phonetic errors.
 
 ## Saved Data
 
@@ -171,6 +193,22 @@ The fixed left-side practice calendar shows:
 
 ## Developer Notes
 
+Python backend:
+
+- An async HTTPX connection pool calls OpenAI with a 20-second connect timeout and 120-second read/write timeouts.
+- Local file operations run in worker threads to avoid blocking other requests.
+- Files are saved through atomic replacement. Save/delete operations use an in-process lock; run this local file store in a single server process.
+- Audio endpoints support `HEAD` and `Range` for duration display and seeking.
+- Configuration precedence matches the previous server: existing environment variables, then `.env`, then `.env.local`. Startup also reads `PORT` / `HOST` from those files.
+
+Run regression tests:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+Tests use temporary folders and mocked OpenAI responses. They do not change existing sessions or keys and incur no API charges. Coverage includes legacy records, audio seeking, saving/deleting, reanalysis, translation, realtime negotiation, key configuration, and recovery from errors. Real microphone permissions, voice quality, and connection recovery still require the browser checks below.
+
 Latency:
 
 - Keep English realtime conversation on WebRTC. Do not replace it with a request/response audio loop.
@@ -210,4 +248,3 @@ Error recovery:
 - Practice Records can expand text, expand feedback, reanalyze, and delete sessions.
 - Practice Statistics shows bar charts, line charts, and the left-side calendar.
 - The calendar month selector switches between available months.
-

@@ -7,3 +7,7 @@ recordings/
 output/
 tmp_pdf_*.png
 npm-debug.log*
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

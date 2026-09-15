@@ -1,0 +1,204 @@
+{
+  "readingBank": [
+    {
+      "title": "我的愿望",
+      "text": "每个人心里都有一个愿望。小时候，我的愿望常常变来变去，有时想当医生，有时想当老师，有时又想去很远的地方旅行。长大以后，我慢慢明白，愿望不一定要非常宏大，它也可以是每天坚持读书，认真完成一件小事，或者让自己变得更有耐心。一个清楚的愿望，像一盏灯，提醒我们在忙碌和犹豫的时候，仍然知道应该往哪里走。"
+    },
+    {
+      "title": "我喜欢的季节",
+      "text": "一年四季各有不同的美。春天的风很轻，树枝上慢慢长出新叶；夏天的雨来得突然，空气里有一种热烈的气息；秋天最适合散步，阳光不刺眼，天空显得格外高远；冬天虽然寒冷，却让人更珍惜屋里的温暖。我最喜欢秋天，因为它不像夏天那样急促，也不像冬天那样沉静。秋天让人愿意放慢脚步，认真看看身边的变化。"
+    },
+    {
+      "title": "谈谈卫生与健康",
+      "text": "健康的生活离不开良好的卫生习惯。每天按时吃饭、保证睡眠、适当运动，看起来都是普通的小事，却会长期影响一个人的精神状态。保持卫生也不只是为了自己，它还关系到周围人的感受。比如咳嗽时遮住口鼻，饭前洗手，定期整理房间，都是对生活负责的表现。真正的健康，不只是没有生病，更是身体和心情都处在比较稳定的状态。"
+    },
+    {
+      "title": "我的朋友",
+      "text": "朋友不一定每天都见面，却常常在重要的时候给人支持。我有一个朋友，性格开朗，做事认真。遇到问题时，他不会急着评价别人，而是先把事情听清楚，再慢慢说出自己的看法。和他相处久了，我也学会了更加耐心地听别人说话。真正的朋友，不只是一起分享快乐的人，也是能提醒我们变得更好的人。"
+    },
+    {
+      "title": "难忘的一次旅行",
+      "text": "有一次旅行让我印象很深。那天清晨，我们坐车去一座山脚下的小镇。路上雾气很重，远处的房屋和树木都像隔着一层薄纱。到达以后，天气慢慢放晴，山路旁开着许多不知名的小花。旅行的意义，有时不在于去了多远的地方，而在于离开熟悉的环境以后，重新发现自己对世界的好奇。"
+    },
+    {
+      "title": "学习普通话的体会",
+      "text": "学习普通话不是简单地把每个字读出来，而是要注意声母、韵母、声调和语流的配合。有些字单独读时并不难，可是一放进句子里，就容易因为速度太快而变得含糊。练习朗读时，我会先把容易读错的词圈出来，再放慢速度读几遍。等发音稳定以后，再逐渐加快。这样一步一步练习，表达才会越来越清楚自然。"
+    },
+    {
+      "title": "保护环境",
+      "text": "保护环境并不是一句口号，而是和每个人的日常生活有关。节约用水、减少浪费、随手关灯、尽量少使用一次性物品，这些事情看起来很小，却能慢慢形成一种习惯。环境的改变不会在一天之内发生，但如果更多人愿意从身边的小事做起，干净的街道、清新的空气和安静的社区，就会离我们越来越近。"
+    },
+    {
+      "title": "科技与生活",
+      "text": "科技正在改变我们的生活。过去，很多事情需要花很长时间才能完成，现在只要一部手机，就可以查资料、买东西、联系朋友。科技带来了方便，也提醒我们要学会选择。过度依赖设备，可能会让人减少思考和交流。因此，好的科技使用方式，不是让机器替我们安排一切，而是帮助我们更有效地学习、工作和生活。"
+    }
+  ],
+  "schemas": {
+    "mandarin": {
+      "type": "json_schema",
+      "name": "mandarin_speaking_feedback",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "summary",
+          "score",
+          "pronunciation",
+          "unclearWords",
+          "flatRetroflex",
+          "nasalFinals",
+          "tone",
+          "articulationAdvice",
+          "rhythmAndBreath",
+          "drills"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "pronunciation": {
+            "type": "string"
+          },
+          "unclearWords": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "word",
+                "issue",
+                "advice"
+              ],
+              "properties": {
+                "word": {
+                  "type": "string"
+                },
+                "issue": {
+                  "type": "string"
+                },
+                "advice": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "flatRetroflex": {
+            "type": "string"
+          },
+          "nasalFinals": {
+            "type": "string"
+          },
+          "tone": {
+            "type": "string"
+          },
+          "articulationAdvice": {
+            "type": "string"
+          },
+          "rhythmAndBreath": {
+            "type": "string"
+          },
+          "drills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "english": {
+      "type": "json_schema",
+      "name": "english_speaking_feedback",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "summary",
+          "score",
+          "pronunciation",
+          "unclearWords",
+          "stressAndRhythm",
+          "fluency",
+          "vocabulary",
+          "grammar",
+          "naturalPhrases",
+          "keyMoments",
+          "nextDrills"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "pronunciation": {
+            "type": "string"
+          },
+          "unclearWords": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "word",
+                "issue",
+                "advice"
+              ],
+              "properties": {
+                "word": {
+                  "type": "string"
+                },
+                "issue": {
+                  "type": "string"
+                },
+                "advice": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "stressAndRhythm": {
+            "type": "string"
+          },
+          "fluency": {
+            "type": "string"
+          },
+          "vocabulary": {
+            "type": "string"
+          },
+          "grammar": {
+            "type": "string"
+          },
+          "naturalPhrases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keyMoments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "nextDrills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "prompts": {
+    "mandarin": "你是普通话朗读教练。根据原文和识别文本，给出中文点评。\n原文：\n{referenceText}\n\n识别文本：\n{spokenText}\n\n重点要求：\n- 不要输出完整识别文本。\n- 先评价发音清晰度，再评价节奏、气息和流畅度。\n- 根据原文与识别结果的差异，指出可能没说清楚的词或短语。\n- 重点检查 z/c/s 和 zh/ch/sh/r 的平翘舌，n/l/r 的声母稳定性，an/ang、en/eng、in/ing 的前后鼻音，二声/三声/四声的声调到位程度，轻声和连读吞字。\n- 对可能的问题给出口腔位置建议，但必须用“可能、建议检查”这类措辞，不要假装能精确看到舌位。\n- 反馈要像普通话考试练习教练，具体、短句、可执行。\n- 每个文字字段控制在 1-2 句；unclearWords 最多 5 项；drills 正好 4 条。",
+    "english": "You are an English speaking coach for a Chinese learner. Review the USER's spoken English performance from this realtime practice transcript.\nPractice topic: {topic}\nConversation transcript:\n{transcript}\n\nUser-only audio transcription:\n{audioTranscript}\n\nPossible low-confidence audio words or fragments:\n{transcriptionNotes}\n\nRequirements:\n- Focus on the user's speaking, not the coach's lines.\n- Do not quote the full transcript.\n- Start with the biggest pronunciation or clarity improvement opportunity if audio evidence is available.\n- Use the user-only audio transcription and low-confidence fragments to identify likely unclear words, dropped endings, stress issues, rhythm problems, and hesitation patterns.\n- Give practical feedback on pronunciation clarity, rhythm, word stress, linking, hesitation, word choice, grammar patterns, and better natural phrases.\n- When audio evidence is missing or ambiguous, phrase it as likely clarity issues, not certain phonetic diagnosis.\n- Keep the feedback concrete and short enough to act on before the next practice.\n- Keep every text field to 1-2 short sentences. Use at most 5 unclear words, exactly 3 natural phrases, exactly 4 drills.\n\nReturn fields: summary, score, pronunciation, unclearWords, stressAndRhythm, fluency, vocabulary, grammar, naturalPhrases, keyMoments, nextDrills.\nscore is 0-100. unclearWords is an array of likely unclear words or short phrases. naturalPhrases is an array of 3 improved expressions. keyMoments is an array of likely weak moments. nextDrills is 4 short speaking drills."
+  }
+}

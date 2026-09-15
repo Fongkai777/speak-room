@@ -4,6 +4,8 @@
 
 Speak Room 是一个本地运行的口语练习网页应用，面向英语实时对话练习和中文普通话朗读练习。它把录音、文本、点评、分数和练习统计保存在本机，适合做长期复练。
 
+后端使用 **Python + FastAPI**，网页继续使用 HTML / CSS / JavaScript。浏览器负责实时音频，因此不需要安装 Node.js。
+
 ## 功能概览
 
 - 英语实时对话：使用 OpenAI Realtime API 和 WebRTC，实现低延迟语音对话。
@@ -15,6 +17,13 @@ Speak Room 是一个本地运行的口语练习网页应用，面向英语实时
 - 模型配置：本地保存 `OPENAI_API_KEY`，并显示当前 Realtime / 文本模型配置。
 
 ## 本地启动
+
+需要 Python 3.9 或更高版本（新环境建议使用 Python 3.12）。首次运行先在项目目录安装依赖：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
 
 1. 创建 `.env.local`：
 
@@ -30,39 +39,46 @@ Speak Room 是一个本地运行的口语练习网页应用，面向英语实时
    OPENAI_REALTIME_MODEL="gpt-realtime-2.1-mini"
    OPENAI_TEXT_MODEL="gpt-5.6-luna"
    OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
-   PORT=3000
+   PORT=4000
    ```
 
 3. 启动服务：
 
    ```bash
-   npm run dev
+   .venv/bin/python server.py
    ```
 
 4. 打开网页：
 
    ```text
-   http://localhost:3000
+   http://localhost:4000
    ```
 
-如果使用当前本地开发端口，也可以用：
+默认端口为 4000。也可以显式指定端口：
 
 ```bash
-PORT=3001 npm run dev
+PORT=4000 .venv/bin/python server.py
 ```
 
 然后打开：
 
 ```text
-http://127.0.0.1:3001
+http://127.0.0.1:4000
 ```
+
+在运行服务的终端按 `Ctrl+C` 停止。Windows 可使用 `.venv\Scripts\python.exe` 替代 `.venv/bin/python`。
+
+从旧版迁移时，直接使用新的 Python 启动命令即可；`.env.local` 和 `practice-sessions/` 无需转换。先停止旧版服务，避免端口冲突。网页、主题、录音、点评、翻译、统计和日历沿用原有功能。
 
 ## 项目结构
 
 ```text
 .
-├── server.mjs
-├── package.json
+├── server.py
+├── requirements.txt
+├── practice_content.json
+├── tests/
+│   └── test_server.py
 ├── public/
 │   ├── index.html
 │   ├── app.js
@@ -90,13 +106,15 @@ http://127.0.0.1:3001
 - 显示实时状态、转写文本、录音时长、音量、练习记录、统计图和日历。
 - 调用本地服务端接口做翻译、分析、保存和删除记录。
 
-服务端负责：
+Python 服务端（FastAPI + HTTPX）负责：
 
 - 从 `.env.local` 读取 `OPENAI_API_KEY`。
 - 创建 Realtime 会话连接，避免浏览器接触项目 API Key。
 - 调用 OpenAI Responses API 做翻译和点评。
 - 调用转写模型处理保存后的录音。
 - 管理本地练习记录目录。
+
+`practice_content.json` 保存原有的朗读素材、点评提示词和点评 JSON 格式。它只由服务端读取。
 
 ## OpenAI API 使用
 
@@ -107,6 +125,8 @@ http://127.0.0.1:3001
 - 服务端通过 `/api/realtime-connect` 把 SDP 和 Realtime session 配置发送到 OpenAI。
 - OpenAI 返回 SDP answer 后，浏览器开始收发实时音频。
 - 对话事件通过 `oai-events` data channel 接收，用于显示文本转写和连接状态。
+
+接口格式参考 [OpenAI Realtime Create Call](https://developers.openai.com/api/reference/typescript/resources/realtime/subresources/calls/methods/create)。Python 只负责建立连接，实时音频仍在浏览器与 OpenAI 之间通过 WebRTC 传输。
 
 文本翻译、练习点评使用 Responses API。
 
@@ -121,6 +141,8 @@ gpt-4o-mini-transcribe
 ```text
 gpt-4o-transcribe
 ```
+
+点评沿用原有方式：先转写录音，再结合文本和可用的低置信度片段生成建议。这不是专业音素级发音评分，不能据此确定具体舌位或断言某个发音错误。
 
 ## 数据保存
 
@@ -170,6 +192,22 @@ practice-sessions/
 - 月份可下拉选择。
 
 ## 开发注意事项
+
+Python 后端：
+
+- 使用异步 HTTPX 连接池调用 OpenAI；网络连接超时为 20 秒，读写超时为 120 秒。
+- 本地文件操作放到工作线程，避免阻塞其他接口。
+- 通过临时文件和原子替换保存内容；保存、删除操作使用进程内锁。当前本地文件存储按单进程运行。
+- 音频接口支持 `HEAD` 和 `Range`，保留全长显示与进度拖动。
+- 配置优先级沿用旧版：已有环境变量优先，其次 `.env`，最后 `.env.local`；启动时也读取文件中的 `PORT` / `HOST`。
+
+自动回归测试：
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+测试使用临时目录和模拟 OpenAI 响应，不修改已有练习或密钥，也不产生 API 费用。覆盖旧记录兼容、音频拖动、保存删除、重新点评、翻译、实时连接参数、密钥配置和错误恢复。真实麦克风权限、声音质量和网络断线后的体验仍需按下面清单在浏览器验证。
 
 延迟：
 

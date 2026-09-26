@@ -113,12 +113,6 @@ The feedback pipeline transcribes saved audio, then creates structured suggestio
 
 This is transcription- and model-assisted practice feedback, not professional phoneme measurement, tone-curve analysis, or tongue-position sensing. Treat articulation details as coaching suggestions rather than definitive diagnosis.
 
-## Development And Tests
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-```
-
 ## Troubleshooting
 
 **The page does not open**

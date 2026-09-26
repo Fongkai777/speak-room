@@ -4,7 +4,7 @@
 
 Speak Room is a local bilingual speaking-practice assistant for English realtime conversation, Mandarin reading, recording and transcript review, AI feedback, long-term learning advice, and practice statistics.
 
-The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, and JavaScript. English conversation streams audio through the OpenAI Realtime API and WebRTC. API keys, recordings, and learning records remain on the local machine.
+The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, and JavaScript. English conversation streams audio through the OpenAI Realtime API and WebRTC.
 
 ## Features
 
@@ -20,7 +20,7 @@ The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, 
 
 ### Mandarin Reading
 
-- Random prompts from a local Putonghua-test-style bank without an API request for every prompt.
+- Random prompts from a Putonghua-test-style reading bank.
 - An explicit countdown, elapsed recording time, and live input level.
 - Separate Start Recording, End and Save, and Generate Feedback actions.
 - Feedback across reading accuracy, pronunciation clarity, tone control, fluency, and rhythm/breath.
@@ -30,7 +30,6 @@ The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, 
 
 - Separate English and Mandarin tabs in Practice Records.
 - Seekable audio, collapsed text, feedback review, reanalysis, and deletion for each record.
-- Local absolute file paths are not displayed in the interface.
 - Separate total practice time for English and Mandarin plus a two-color daily duration chart.
 - English and Mandarin score-trend tabs with independent numbering and x-axes.
 - A monthly sidebar calendar using blue, red, or split-color squares for practice days.
@@ -41,7 +40,7 @@ The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, 
 - Sidebar translation with auto-detect, Chinese-to-English, and English-to-Chinese modes.
 - Translation starts automatically after typing stops.
 - Separate model selectors for realtime conversation, text/feedback, and translation.
-- The API key can be saved to local `.env.local`; the browser never reads its plaintext value.
+- The API key can be saved to `.env.local`.
 
 ## Quick Start
 
@@ -89,8 +88,6 @@ PORT=4000
 
 For higher-accuracy transcription, set `OPENAI_TRANSCRIBE_MODEL` to `gpt-4o-transcribe`.
 
-Configuration precedence is: existing process environment, `.env`, then `.env.local`. Existing environment variables are not overwritten by files.
-
 ## Project Structure
 
 ```text
@@ -104,14 +101,7 @@ Configuration precedence is: existing process environment, `.env`, then `.env.lo
 │   ├── index.html
 │   ├── app.js
 │   └── styles.css
-└── practice-sessions/        # Generated locally; never pushed to GitHub
-    └── <session-id>/
-        ├── audio.webm
-        ├── user_audio.webm
-        ├── transcript.txt
-        ├── reference.txt
-        ├── analysis.json
-        └── metadata.json
+└── .gitignore
 ```
 
 ## Feedback And Scoring
@@ -120,7 +110,6 @@ The feedback pipeline transcribes saved audio, then creates structured suggestio
 
 - English: pronunciation 25%, fluency 25%, grammar 20%, vocabulary 15%, and communication 15%. Pronunciation is not invented from text when user-only audio is unavailable.
 - Mandarin: reading accuracy 35%, pronunciation clarity 25%, tone control 15%, fluency 15%, and rhythm/breath 10%.
-- Existing records are not automatically reanalyzed or charged. Use Reanalyze to apply current rules.
 
 This is transcription- and model-assisted practice feedback, not professional phoneme measurement, tone-curve analysis, or tongue-position sensing. Treat articulation details as coaching suggestions rather than definitive diagnosis.
 
@@ -129,8 +118,6 @@ This is transcription- and model-assisted practice feedback, not professional ph
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
-
-Tests use temporary directories and mocked OpenAI responses. They do not modify records, reveal the plaintext key, or incur API charges. Coverage includes Realtime configuration, memory, audio seeking, save/delete/reanalysis, bilingual weighted scoring, translation, model configuration, learner profiles, and error recovery.
 
 ## Troubleshooting
 
@@ -152,7 +139,7 @@ PORT=4001 .venv/bin/python -B server.py
 
 **Realtime conversation closes or fails**
 
-Reload and start a fresh session. A closed peer connection should not be reused.
+Reload and start a fresh session.
 
 **Feedback fails**
 
@@ -161,16 +148,3 @@ Audio is saved locally first. Open Practice Records and select Reanalyze.
 **Microphone permission is unavailable**
 
 Check browser permissions and use `localhost`, `127.0.0.1`, or HTTPS.
-
-## Manual Validation Checklist
-
-- Model Configuration shows a configured key and saves all three model choices independently.
-- English conversation can start, pause, resume, and end with audible assistant speech.
-- Both waveform channels, transcripts, and elapsed time update correctly.
-- Mandarin random prompt shows a title, passage, and a state such as `倒计时 0:45`.
-- Mandarin recording shows elapsed time and input level, then saves when the countdown ends.
-- Both modes generate feedback and can be reanalyzed from Practice Records.
-- Record filtering, deletion, audio seeking, and collapsed text work correctly.
-- Daily duration bars, language score tabs, and independent numbering are correct.
-- Learning Advice summarizes all English records, while the memory toggle affects only new sessions.
-- Inline translation triggers automatically and handles both directions.

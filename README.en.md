@@ -2,88 +2,109 @@
 
 [中文版](README.md)
 
-Speak Room is a local browser app for English realtime conversation practice and Mandarin reading practice. It saves recordings, text, feedback, scores, and practice statistics on your own machine so you can review and repeat over time.
+Speak Room is a local bilingual speaking-practice assistant for English realtime conversation, Mandarin reading, recording and transcript review, AI feedback, long-term learning advice, and practice statistics.
 
-The backend uses **Python + FastAPI**. The browser keeps the HTML / CSS / JavaScript interface and handles realtime audio. Node.js is not required.
+The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, and JavaScript. English conversation streams audio through the OpenAI Realtime API and WebRTC. API keys, recordings, and learning records remain on the local machine.
 
 ## Features
 
-- English realtime conversation: low-latency voice practice with the OpenAI Realtime API and WebRTC.
-- Inline English translator: translate Chinese to English, English to Chinese, or let the app detect the direction automatically.
-- Mandarin reading practice: random local reading prompts in a Putonghua-test style, with a target-time countdown.
-- Coaching feedback: pronunciation, clarity, rhythm, expression, and follow-up drills after saving a practice session.
-- Practice records: each session keeps audio, text, feedback, and metadata in one folder.
-- Practice statistics: daily duration charts, score trends, and a fixed left-side calendar showing practice days by month.
-- Model configuration: save `OPENAI_API_KEY` locally and view the current Realtime and text model settings.
+### English Conversation
 
-## Local Setup
+- Low-latency two-way audio through WebRTC and the OpenAI Realtime API.
+- Start, pause, resume, and end a conversation with visible connection state and a two-color waveform.
+- Study-abroad scenarios plus a default open-ended casual topic.
+- Selectable voice and `0.9x`, `1.0x`, or `1.1x` speaking speed.
+- Live transcripts with saved mixed audio, user-only microphone audio, and conversation text.
+- Optional learning-memory reuse so a new session can reference background and long-term priorities.
+- Feedback across pronunciation, fluency, grammar, vocabulary, and task communication, followed by a server-calculated weighted total.
 
-Requires Python 3.9 or later (Python 3.12 is recommended for new environments). Install dependencies from the project directory:
+### Mandarin Reading
+
+- Random prompts from a local Putonghua-test-style bank without an API request for every prompt.
+- An explicit countdown, elapsed recording time, and live input level.
+- Separate Start Recording, End and Save, and Generate Feedback actions.
+- Feedback across reading accuracy, pronunciation clarity, tone control, fluency, and rhythm/breath.
+- Reading accuracy is calculated from the source and transcription; the server combines it with other dimensions into the final score.
+
+### Records, Statistics, And Learning Advice
+
+- Separate English and Mandarin tabs in Practice Records.
+- Seekable audio, collapsed text, feedback review, reanalysis, and deletion for each record.
+- Local absolute file paths are not displayed in the interface.
+- Separate total practice time for English and Mandarin plus a two-color daily duration chart.
+- English and Mandarin score-trend tabs with independent numbering and x-axes.
+- A monthly sidebar calendar using blue, red, or split-color squares for practice days.
+- Learning Advice analyzes all English transcripts for learned patterns, useful phrases, usages to avoid, recurring issues, and next steps.
+
+### Translation And Configuration
+
+- Sidebar translation with auto-detect, Chinese-to-English, and English-to-Chinese modes.
+- Translation starts automatically after typing stops.
+- Separate model selectors for realtime conversation, text/feedback, and translation.
+- The API key can be saved to local `.env.local`; the browser never reads its plaintext value.
+
+## Quick Start
+
+Python 3.9 or later is required. Python 3.12 is recommended.
 
 ```bash
+cd "/path/to/speak-room"
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-1. Create `.env.local`:
-
-   ```bash
-   OPENAI_API_KEY="sk-..."
-   ```
-
-   You can also save the key from the app's Model Configuration page. The key is written only to local `.env.local`; the browser never reads the plaintext key.
-
-2. Optional model overrides:
-
-   ```bash
-   OPENAI_REALTIME_MODEL="gpt-realtime-2.1-mini"
-   OPENAI_TEXT_MODEL="gpt-5.6-luna"
-   OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
-   PORT=4000
-   ```
-
-3. Start local development:
-
-   ```bash
-   .venv/bin/python server.py
-   ```
-
-4. Open:
-
-   ```text
-   http://localhost:4000
-   ```
-
-The default port is 4000. You can also set the port explicitly:
+Create `.env.local`:
 
 ```bash
-PORT=4000 .venv/bin/python server.py
+OPENAI_API_KEY="sk-..."
 ```
 
-Then open:
+You can also start the app first and save the key from Model Configuration.
 
-```text
-http://127.0.0.1:4000
+Start the server:
+
+```bash
+PORT=4000 .venv/bin/python -B server.py
 ```
 
-Press `Ctrl+C` in the server terminal to stop. On Windows, use `.venv\Scripts\python.exe` instead of `.venv/bin/python`.
+Open `http://127.0.0.1:4000`. The server runs in the foreground, so keep that terminal open. Press `Ctrl+C` to stop it.
 
-When migrating from the Node.js version, stop the old server and use the Python command. Existing `.env.local` and `practice-sessions/` files need no conversion. The interface, topics, recordings, feedback, translations, charts, and calendar keep their existing behavior.
+On Windows:
+
+```powershell
+$env:PORT=4000
+.venv\Scripts\python.exe -B server.py
+```
+
+## Optional Configuration
+
+```bash
+OPENAI_REALTIME_MODEL="gpt-realtime-2.1-mini"
+OPENAI_TEXT_MODEL="gpt-5.6-luna"
+OPENAI_TRANSLATE_MODEL="gpt-5.6-luna"
+OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
+HOST="127.0.0.1"
+PORT=4000
+```
+
+For higher-accuracy transcription, set `OPENAI_TRANSCRIBE_MODEL` to `gpt-4o-transcribe`.
+
+Configuration precedence is: existing process environment, `.env`, then `.env.local`. Existing environment variables are not overwritten by files.
 
 ## Project Structure
 
 ```text
 .
-├── server.py
+├── server.py                 # FastAPI server, OpenAI calls, and local storage
+├── practice_content.json     # Mandarin bank, prompts, and structured schemas
 ├── requirements.txt
-├── practice_content.json
 ├── tests/
 │   └── test_server.py
 ├── public/
 │   ├── index.html
 │   ├── app.js
 │   └── styles.css
-└── practice-sessions/
+└── practice-sessions/        # Generated locally; never pushed to GitHub
     └── <session-id>/
         ├── audio.webm
         ├── user_audio.webm
@@ -93,158 +114,85 @@ When migrating from the Node.js version, stop the old server and use the Python 
         └── metadata.json
 ```
 
-`practice-sessions/` is the local practice-record directory. It is ignored by `.gitignore` and is not pushed to GitHub.
-
 ## Client And Server Responsibilities
 
-The browser handles:
+The browser handles microphone permission, WebRTC, realtime playback, `MediaRecorder`, transcripts, waveforms, countdowns, and the records, charts, calendar, and translation interfaces.
 
-- Requesting microphone permission.
-- Creating the WebRTC connection for English realtime conversation.
-- Playing realtime assistant audio.
-- Recording practice audio with `MediaRecorder`.
-- Displaying realtime status, transcripts, elapsed time, microphone level, records, charts, and the calendar.
-- Calling local server endpoints for translation, analysis, saving, and deletion.
+The FastAPI server handles:
 
-The Python server (FastAPI + HTTPX) handles:
+- Reading the local API key without exposing it to browser code.
+- Realtime negotiation plus Responses API and transcription API requests.
+- Saving, loading, reanalyzing, and deleting practice records.
+- Building an English learner profile and injecting compact memory into a new session when enabled.
+- Normalizing and weighting English and Mandarin dimensions instead of trusting a model-selected total.
 
-- Reading `OPENAI_API_KEY` from `.env.local`.
-- Creating Realtime connections without exposing the project API key to the browser.
-- Calling the OpenAI Responses API for translation and feedback.
-- Calling transcription models for saved recordings.
-- Managing local practice-session folders.
+Realtime audio flows directly between the browser and OpenAI over WebRTC. The server negotiates the connection and stores results.
 
-`practice_content.json` contains the existing reading bank, feedback prompts, and JSON schemas. It is read only by the server.
+## Local Data And Privacy
 
-## OpenAI API Usage
+Each session is stored under `practice-sessions/<session-id>/`. That directory, `.env.local`, the virtual environment, and caches are excluded by `.gitignore` and are not pushed to GitHub.
 
-English realtime conversation uses the Realtime API with WebRTC:
+English records normally contain mixed audio, user-only audio, transcript, feedback, and metadata. Mandarin records contain reading audio, source passage, a transcription used for scoring, feedback, and metadata.
 
-- The browser creates an `RTCPeerConnection`.
-- The browser adds the microphone track and generates an SDP offer.
-- The server sends that SDP plus the Realtime session config to OpenAI through `/api/realtime-connect`.
-- OpenAI returns an SDP answer, and the browser starts realtime audio input/output.
-- Conversation events arrive over the `oai-events` data channel for transcript and lifecycle updates.
+The English learner profile is stored at `practice-sessions/english-learning-profile.json` and is also excluded from GitHub.
 
-The request format follows [OpenAI Realtime Create Call](https://developers.openai.com/api/reference/typescript/resources/realtime/subresources/calls/methods/create). Python negotiates the connection; realtime audio flows directly between the browser and OpenAI over WebRTC.
+## Feedback And Scoring
 
-Text translation and practice feedback use the Responses API.
+The feedback pipeline transcribes saved audio, then creates structured suggestions from transcripts, source text, and available low-confidence fragments.
 
-Transcription defaults to:
+- English: pronunciation 25%, fluency 25%, grammar 20%, vocabulary 15%, and communication 15%. Pronunciation is not invented from text when user-only audio is unavailable.
+- Mandarin: reading accuracy 35%, pronunciation clarity 25%, tone control 15%, fluency 15%, and rhythm/breath 10%.
+- Existing records are not automatically reanalyzed or charged. Use Reanalyze to apply current rules.
 
-```text
-gpt-4o-mini-transcribe
-```
+This is transcription- and model-assisted practice feedback, not professional phoneme measurement, tone-curve analysis, or tongue-position sensing. Treat articulation details as coaching suggestions rather than definitive diagnosis.
 
-For higher accuracy, configure:
-
-```text
-gpt-4o-transcribe
-```
-
-Feedback keeps the existing approach: transcribe the recording, then generate suggestions from text and available low-confidence fragments. This is not phoneme-level pronunciation scoring and cannot establish exact tongue position or definite phonetic errors.
-
-## Saved Data
-
-Each saved practice session gets its own folder, for example:
-
-```text
-practice-sessions/
-  2026-09-03T13-36-17-802Z-english/
-    audio.webm
-    user_audio.webm
-    transcript.txt
-    analysis.json
-    metadata.json
-```
-
-English sessions:
-
-- `audio.webm`: playable mixed conversation audio.
-- `user_audio.webm`: user-only microphone audio for more targeted pronunciation feedback.
-- `transcript.txt`: conversation transcript.
-- `analysis.json`: feedback result.
-- `metadata.json`: title, duration, score, file names, and other metadata.
-
-Mandarin sessions:
-
-- `audio.webm`: reading recording.
-- `reference.txt`: source reading passage.
-- `analysis.json`: feedback result.
-- `metadata.json`: title, duration, score, file names, and other metadata.
-
-## Practice Statistics
-
-The Statistics tab includes:
-
-- Total practice time.
-- English practice time.
-- Mandarin practice time.
-- Average score.
-- Daily duration bar chart.
-- Separate English and Mandarin score trend lines.
-
-The fixed left-side practice calendar shows:
-
-- Blue squares for English practice days.
-- Red squares for Mandarin practice days.
-- Blue/red split squares when both were practiced on the same day.
-- A month selector for switching between months.
-
-## Developer Notes
-
-Python backend:
-
-- An async HTTPX connection pool calls OpenAI with a 20-second connect timeout and 120-second read/write timeouts.
-- Local file operations run in worker threads to avoid blocking other requests.
-- Files are saved through atomic replacement. Save/delete operations use an in-process lock; run this local file store in a single server process.
-- Audio endpoints support `HEAD` and `Range` for duration display and seeking.
-- Configuration precedence matches the previous server: existing environment variables, then `.env`, then `.env.local`. Startup also reads `PORT` / `HOST` from those files.
-
-Run regression tests:
+## Development And Tests
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Tests use temporary folders and mocked OpenAI responses. They do not change existing sessions or keys and incur no API charges. Coverage includes legacy records, audio seeking, saving/deleting, reanalysis, translation, realtime negotiation, key configuration, and recovery from errors. Real microphone permissions, voice quality, and connection recovery still require the browser checks below.
+Tests use temporary directories and mocked OpenAI responses. They do not modify records, reveal the plaintext key, or incur API charges. Coverage includes Realtime configuration, memory, audio seeking, save/delete/reanalysis, bilingual weighted scoring, translation, model configuration, learner profiles, and error recovery.
 
-Latency:
+## Troubleshooting
 
-- Keep English realtime conversation on WebRTC. Do not replace it with a request/response audio loop.
-- The Realtime session uses semantic VAD and interruption support for natural turn-taking.
-- Assistant responses should stay short; long spoken replies increase perceived latency.
+**The page does not open**
 
-Session lifecycle:
+Make sure the server terminal is still open and visit `http://127.0.0.1:4000`. Check the port with:
 
-- Start each English conversation with a fresh Realtime connection.
-- On session end, close the peer connection, data channel, local tracks, remote tracks, and recorders.
-- If the connection closes or fails, start a new session instead of reusing the old connection.
+```bash
+lsof -nP -iTCP:4000 -sTCP:LISTEN
+```
 
-Permissions:
+**Port 4000 is already in use**
 
-- Microphone access requires an explicit browser permission prompt.
-- `getUserMedia` requires `localhost`, `127.0.0.1`, or HTTPS.
-- The in-app key configuration page is intended for local development only. Production deployment should use a secret manager.
+Stop the previous server or use another port:
 
-Error recovery:
+```bash
+PORT=4001 .venv/bin/python -B server.py
+```
 
-- If the app says the key is missing, check `.env.local` or the Model Configuration tab.
-- If English realtime connection fails, refresh and start a new session.
-- If feedback analysis fails, the saved audio remains available and can be reanalyzed from Practice Records.
-- If recording is unavailable, check the browser's `MediaRecorder` support.
+**Realtime conversation closes or fails**
 
-## Validation Checklist
+Reload and start a fresh session. A closed peer connection should not be reused.
 
-- The Model Configuration tab shows `Key 已配置` after saving or loading `.env.local`.
-- English realtime conversation asks for microphone permission.
-- English realtime conversation plays assistant audio and displays transcript text.
-- Interrupting the assistant during speech keeps the connection usable.
-- Inline translation works for Chinese to English, English to Chinese, and auto-detect mode.
-- Ending an English session saves audio, text, feedback, and metadata.
-- Mandarin random prompt shows a title, passage, and countdown.
-- Mandarin recording shows microphone level and elapsed time.
-- Mandarin recording stops automatically when the countdown ends.
-- Practice Records can expand text, expand feedback, reanalyze, and delete sessions.
-- Practice Statistics shows bar charts, line charts, and the left-side calendar.
-- The calendar month selector switches between available months.
+**Feedback fails**
+
+Audio is saved locally first. Open Practice Records and select Reanalyze.
+
+**Microphone permission is unavailable**
+
+Check browser permissions and use `localhost`, `127.0.0.1`, or HTTPS.
+
+## Manual Validation Checklist
+
+- Model Configuration shows a configured key and saves all three model choices independently.
+- English conversation can start, pause, resume, and end with audible assistant speech.
+- Both waveform channels, transcripts, and elapsed time update correctly.
+- Mandarin random prompt shows a title, passage, and a state such as `倒计时 0:45`.
+- Mandarin recording shows elapsed time and input level, then saves when the countdown ends.
+- Both modes generate feedback and can be reanalyzed from Practice Records.
+- Record filtering, deletion, audio seeking, and collapsed text work correctly.
+- Daily duration bars, language score tabs, and independent numbering are correct.
+- Learning Advice summarizes all English records, while the memory toggle affects only new sessions.
+- Inline translation triggers automatically and handles both directions.

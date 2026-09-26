@@ -11,7 +11,9 @@ from unittest.mock import patch
 import httpx
 from fastapi.testclient import TestClient
 
-from server import CONTENT, create_app, load_env, normalize_score, parse_analysis
+from server import (CONTENT, LEARNING_PROFILE_SCHEMA, calibrate_english_score,
+                    calibrate_mandarin_score, create_app, load_env, normalize_score,
+                    parse_analysis, reading_accuracy_score)
 
 
 def multipart(request):
@@ -26,7 +28,12 @@ class ServerTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.env = patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-only"})
+        self.env = patch.dict(os.environ, {
+            "OPENAI_API_KEY": "sk-test-only",
+            "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1-mini",
+            "OPENAI_TEXT_MODEL": "gpt-5.6-luna",
+            "OPENAI_TRANSLATE_MODEL": "gpt-5.6-luna",
+        })
         self.env.start()
         self.addCleanup(self.env.stop)
         self.requests = []
@@ -65,12 +72,37 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
+    def learning_profile(self):
+        return {
+            "summary": "表达清楚，下一步需要提高自然度和句式变化。",
+            "personalContext": ["Studies in Singapore"],
+            "strengths": ["Can explain study experiences clearly"],
+            "masteredPatterns": [{"pattern": "I used to..., but now...", "evidence": "Used in two practices",
+                                   "nextStep": "Add a concrete example"}],
+            "usefulPhrases": [{"phrase": "What I mean is...", "use": "澄清自己的意思"}],
+            "avoidUsages": [{"usage": "discuss about", "problem": "discuss 后不加 about",
+                              "replacement": "discuss the issue"}],
+            "recurringIssues": [{"issue": "句尾过去式不清楚", "evidence": "两次点评提到词尾",
+                                  "practice": "对比 work / worked"}],
+            "nextPlan": ["练习澄清观点", "练习过去式词尾", "积累校园表达", "复述一次经历"],
+            "conversationMemory": "The learner studies in Singapore and wants natural spoken English. Revisit past-tense endings and clarification phrases.",
+        }
+
     def test_static_and_config_keep_key_private(self):
-        self.assertIn("<title>Speak Room</title>", self.client.get("/").text)
+        page = self.client.get("/").text
+        script = self.client.get("/app.js").text
+        self.assertIn("<title>Speak Room</title>", page)
+        self.assertIn('id="pauseEnglish"', page)
+        self.assertIn('id="englishWaveCanvas"', page)
+        self.assertIn("function toggleEnglishPause()", script)
+        self.assertEqual(self.client.get("/").headers["cache-control"], "no-store")
+        self.assertEqual(self.client.get("/app.js").headers["cache-control"], "no-store")
         self.assertEqual(self.client.head("/").content, b"")
         self.assertEqual(self.client.get("/app.js").status_code, 200)
         config = self.client.get("/api/config")
         self.assertTrue(config.json()["keyPresent"])
+        self.assertEqual(config.json()["translateModel"], "gpt-5.6-luna")
+        self.assertIn("gpt-4o-mini", config.json()["modelOptions"]["translateModel"])
         self.assertNotIn("sk-test-only", config.text)
         for path in ("/.env.local", "/server.py", "/practice_content.json"):
             self.assertEqual(self.client.get(path).status_code, 404)
@@ -85,9 +117,27 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(os.environ["OPENAI_API_KEY"], "sk-unit-test")
         self.assertEqual(self.client.post("/api/config/api-key", json={"apiKey": "invalid"}).status_code, 400)
 
+    def test_save_model_configuration_preserves_key_and_applies_each_model(self):
+        path = self.root / ".env.local"
+        path.write_text('OPENAI_API_KEY="keep-this-value"\n', encoding="utf-8")
+        selected = {"realtimeModel": "gpt-realtime-2.1", "textModel": "gpt-5.6-terra",
+                    "translateModel": "gpt-4o-mini"}
+        response = self.client.post("/api/config/models", json=selected)
+        self.assertEqual(response.json(), selected)
+        saved = path.read_text(encoding="utf-8")
+        self.assertIn('OPENAI_API_KEY="keep-this-value"', saved)
+        self.assertIn('OPENAI_REALTIME_MODEL="gpt-realtime-2.1"', saved)
+        self.assertIn('OPENAI_TEXT_MODEL="gpt-5.6-terra"', saved)
+        self.assertIn('OPENAI_TRANSLATE_MODEL="gpt-4o-mini"', saved)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.client.get("/api/config").json()["translateModel"], "gpt-4o-mini")
+        invalid = {**selected, "translateModel": "made-up-model"}
+        self.assertEqual(self.client.post("/api/config/models", json=invalid).status_code, 400)
+
     def test_missing_key_does_not_disable_local_practice(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
-            for endpoint in ("translate", "analyze", "realtime-token", "realtime-connect"):
+            for endpoint in ("translate", "analyze", "realtime-token", "realtime-connect",
+                             "learning-profile/ensure", "learning-profile/generate"):
                 self.assertEqual(self.client.post("/api/" + endpoint, json={}).status_code, 401)
             self.assertEqual(self.client.post("/api/reading/generate", json={}).status_code, 200)
             self.save()
@@ -167,17 +217,19 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/translate", content=b" " * (1024 * 1024 + 1)).status_code, 413)
 
     def test_translation_all_directions(self):
-        for direction in ("zh-en", "en-zh", "auto"):
-            result = self.client.post("/api/translate", json={"text": "hello", "direction": direction})
-            self.assertEqual(result.json(), {"direction": direction, "translated": "Hello there."})
+        with patch.dict(os.environ, {"OPENAI_TRANSLATE_MODEL": "gpt-4o-mini"}):
+            for direction in ("zh-en", "en-zh", "auto"):
+                result = self.client.post("/api/translate", json={"text": "hello", "direction": direction})
+                self.assertEqual(result.json(), {"direction": direction, "translated": "Hello there."})
         payload = json.loads(self.requests[-1].content)
+        self.assertEqual(payload["model"], "gpt-4o-mini")
         self.assertEqual(payload["max_output_tokens"], 500)
         self.assertNotIn("text", payload)
         self.assertEqual(self.client.post("/api/translate", json={"text": ""}).status_code, 400)
         self.assertEqual(self.client.post("/api/translate", json={"text": "x" * 1201}).status_code, 400)
 
     def test_realtime_sdp_and_session_contract(self):
-        response = self.client.post("/api/realtime-connect?voice=marin&pace=calm&topic=free%20chat",
+        response = self.client.post("/api/realtime-connect?voice=marin&pace=0.9&topic=free%20chat",
                                     content="v=0\r\ns=offer\r\n", headers={"content-type": "application/sdp"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("v=0", response.text)
@@ -185,7 +237,7 @@ class ServerTests(unittest.TestCase):
         fields = multipart(self.requests[-1])
         self.assertEqual(fields["sdp"], b"v=0\r\ns=offer\r\n")
         config = json.loads(fields["session"])
-        self.assertEqual(config["audio"]["output"], {"voice": "marin", "speed": 0.94})
+        self.assertEqual(config["audio"]["output"], {"voice": "marin", "speed": 0.9})
         self.assertTrue(config["audio"]["input"]["turn_detection"]["interrupt_response"])
         self.assertIn("free chat", config["instructions"])
         self.assertEqual(self.client.post("/api/realtime-connect", content="invalid").status_code, 400)
@@ -194,6 +246,58 @@ class ServerTests(unittest.TestCase):
         result = self.client.post("/api/realtime-token", json={}).json()
         self.assertEqual(result, {"value": "ephemeral-test", "expiresAt": 1234, "model": "test-realtime"})
         self.assertEqual(json.loads(self.requests[-1].content)["expires_after"]["seconds"], 600)
+
+    def test_learning_profile_generation_staleness_and_realtime_memory(self):
+        self.feedback_text = json.dumps(self.learning_profile(), ensure_ascii=False)
+        first = self.save(transcript="User: I study in Singapore.\nCoach: Tell me more.")
+        generated = self.client.post("/api/learning-profile/generate")
+        self.assertEqual(generated.status_code, 200, generated.text)
+        data = generated.json()
+        self.assertTrue(data["available"])
+        self.assertFalse(data["stale"])
+        self.assertEqual(data["recordCount"], 1)
+        self.assertEqual(data["profile"]["conversationMemory"], self.learning_profile()["conversationMemory"])
+        self.assertTrue((self.root / "practice-sessions" / "english-learning-profile.json").is_file())
+        response_payload = json.loads(self.requests[-1].content)
+        self.assertEqual(response_payload["text"]["format"], LEARNING_PROFILE_SCHEMA)
+        self.assertIn("I study in Singapore", response_payload["input"])
+
+        self.requests.clear()
+        connected = self.client.post("/api/realtime-connect?useMemory=1", content="v=0\r\ns=offer\r\n")
+        self.assertEqual(connected.status_code, 200)
+        config = json.loads(multipart(self.requests[-1])["session"])
+        self.assertIn("The learner studies in Singapore", config["instructions"])
+        self.assertIn("Do not recite the memory", config["instructions"])
+
+        self.save(transcript="User: I discussed about my project.")
+        stale = self.client.get("/api/learning-profile").json()
+        self.assertTrue(stale["stale"])
+        self.assertEqual(stale["recordCount"], 2)
+        refreshed = self.client.post("/api/learning-profile/ensure").json()
+        self.assertFalse(refreshed["stale"])
+        self.assertEqual(refreshed["recordCount"], 2)
+        self.assertEqual(self.client.delete("/api/sessions/" + first["id"]).status_code, 200)
+        self.assertTrue(self.client.get("/api/learning-profile").json()["stale"])
+
+    def test_realtime_memory_can_be_disabled(self):
+        self.feedback_text = json.dumps(self.learning_profile(), ensure_ascii=False)
+        self.save()
+        self.assertEqual(self.client.post("/api/learning-profile/generate").status_code, 200)
+        self.requests.clear()
+        response = self.client.post("/api/realtime-connect?useMemory=0", content="v=0\r\ns=offer\r\n")
+        self.assertEqual(response.status_code, 200)
+        config = json.loads(multipart(self.requests[-1])["session"])
+        self.assertNotIn("Learner memory", config["instructions"])
+        self.assertNotIn("studies in Singapore", config["instructions"])
+
+    def test_learning_profile_requires_english_transcript(self):
+        empty = self.client.get("/api/learning-profile").json()
+        self.assertFalse(empty["available"])
+        self.assertEqual(empty["recordCount"], 0)
+        self.save(mode="mandarin", transcript="普通话文本")
+        response = self.client.post("/api/learning-profile/generate")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("英文对话", response.json()["error"])
 
     def test_english_analysis_uses_user_audio_and_structured_feedback(self):
         result = self.client.post("/api/analyze", json={"mode": "english", "transcript": "Full conversation",
@@ -262,6 +366,45 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(record["scoreTag"], "")
         self.assertEqual(normalize_score(0), 0)
         self.assertEqual(normalize_score(83.5), 84)
+
+    def test_english_score_is_calculated_from_weighted_dimensions(self):
+        analysis = calibrate_english_score({
+            "score": 72,
+            "scoreBreakdown": {
+                "pronunciation": 80,
+                "fluency": 67,
+                "grammar": 75,
+                "vocabulary": 84,
+                "communication": 90,
+            },
+        })
+        self.assertEqual(analysis["score"], 78)
+        without_audio = calibrate_english_score({
+            "score": 72,
+            "scoreBreakdown": {
+                "pronunciation": None,
+                "fluency": 67,
+                "grammar": 75,
+                "vocabulary": 84,
+                "communication": 90,
+            },
+        })
+        self.assertEqual(without_audio["score"], 77)
+
+    def test_mandarin_score_uses_text_accuracy_and_weighted_dimensions(self):
+        self.assertEqual(reading_accuracy_score("今天天气很好。", "今天天气很好"), 100)
+        analysis = calibrate_mandarin_score({
+            "score": 88,
+            "scoreBreakdown": {
+                "readingAccuracy": 70,
+                "pronunciationClarity": 82,
+                "toneControl": 78,
+                "fluency": 76,
+                "rhythmBreath": 74,
+            },
+        }, "今天天气很好。", "今天天气很好")
+        self.assertEqual(analysis["scoreBreakdown"]["readingAccuracy"], 100)
+        self.assertEqual(analysis["score"], 86)
 
     def test_env_loading_preserves_existing_precedence(self):
         (self.root / ".env").write_text('TEST_SPEAK_VALUE="base"\n', encoding="utf-8")

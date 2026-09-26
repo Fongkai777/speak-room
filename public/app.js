@@ -17,10 +17,22 @@ const state = {
     messages: [],
     currentAssistant: "",
     currentUser: "",
-    analyser: null,
     sessionId: "",
     startedAt: 0,
     durationMs: 0,
+    starting: false,
+    paused: false,
+    pausedAt: 0,
+    pausedDurationMs: 0,
+    remoteAudio: null,
+    analyser: null,
+    remoteAnalyser: null,
+    meterContext: null,
+    meterTimer: null,
+    scopeLevels: {
+      user: Array(44).fill(0),
+      coach: Array(44).fill(0),
+    },
   },
   mandarin: {
     material: null,
@@ -42,6 +54,16 @@ const state = {
     selectedMonth: "",
     sessions: [],
   },
+  records: {
+    filter: "english",
+    sessions: [],
+  },
+  scoreTrendMode: "english",
+  translation: {
+    timer: null,
+    requestId: 0,
+  },
+  learningProfile: null,
 };
 
 const topicLibrary = {
@@ -122,8 +144,13 @@ const els = {
   keyStatus: $("#keyStatus"),
   englishDot: $("#englishDot"),
   englishState: $("#englishState"),
+  englishWaveCanvas: $("#englishWaveCanvas"),
   englishTranscript: $("#englishTranscript"),
   englishAnalysis: $("#englishAnalysis"),
+  learningProfileStatus: $("#learningProfileStatus"),
+  learningProfileContent: $("#learningProfileContent"),
+  useLearningMemory: $("#useLearningMemory"),
+  generateLearningProfile: $("#generateLearningProfile"),
   mandarinAnalysis: $("#mandarinAnalysis"),
   readingTitle: $("#readingTitle"),
   readingText: $("#readingText"),
@@ -141,27 +168,29 @@ const els = {
   translateDirection: $("#translateDirection"),
   translateInput: $("#translateInput"),
   translateOutput: $("#translateOutput"),
-  translateButton: $("#translateButton"),
-  clearTranslation: $("#clearTranslation"),
-  realtimeModel: $("#realtimeModel"),
-  textModel: $("#textModel"),
+  realtimeModelSelect: $("#realtimeModelSelect"),
+  textModelSelect: $("#textModelSelect"),
+  translateModelSelect: $("#translateModelSelect"),
+  modelConfigMessage: $("#modelConfigMessage"),
   configMessage: $("#configMessage"),
 };
 
 init();
 
 async function init() {
+  drawVoiceScope();
   bindTabs();
   bindEnglish();
   bindMandarin();
   bindConfig();
+  bindRecords();
   bindTopics();
   bindCalendar();
   bindTranslator();
   renderTopicShelf("english");
-  drawSignal();
   await refreshConfig();
   loadPracticeCalendar();
+  loadLearningProfile();
 }
 
 function bindTabs() {
@@ -179,8 +208,89 @@ function bindTabs() {
 
 function bindEnglish() {
   $("#startEnglish").addEventListener("click", startEnglishSession);
+  $("#pauseEnglish").addEventListener("click", toggleEnglishPause);
   $("#stopEnglish").addEventListener("click", stopEnglishSession);
   $("#analyzeEnglish").addEventListener("click", analyzeEnglishSession);
+  els.generateLearningProfile.addEventListener("click", () => generateLearningProfile(true).catch(() => {}));
+  const savedMemoryPreference = localStorage.getItem("speak-room-use-learning-memory");
+  els.useLearningMemory.checked = savedMemoryPreference !== "false";
+  els.useLearningMemory.addEventListener("change", () => {
+    localStorage.setItem("speak-room-use-learning-memory", String(els.useLearningMemory.checked));
+  });
+}
+
+async function loadLearningProfile() {
+  try {
+    const response = await fetch("/api/learning-profile");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "无法读取学习档案");
+    renderLearningProfile(data);
+  } catch (error) {
+    els.learningProfileStatus.textContent = error.message;
+  }
+}
+
+async function generateLearningProfile(force = false) {
+  const button = els.generateLearningProfile;
+  button.disabled = true;
+  button.textContent = "整理中";
+  els.learningProfileStatus.textContent = "正在综合全部英文对话文本，这可能需要一点时间";
+  try {
+    const result = await api(force ? "/api/learning-profile/generate" : "/api/learning-profile/ensure", {});
+    renderLearningProfile(result);
+    return result;
+  } catch (error) {
+    els.learningProfileStatus.textContent = error.message;
+    throw error;
+  } finally {
+    button.disabled = false;
+    button.textContent = "更新总建议";
+  }
+}
+
+function renderLearningProfile(data) {
+  state.learningProfile = data;
+  const count = Number(data?.recordCount || 0);
+  const profile = data?.profile;
+  if (!count) {
+    els.learningProfileStatus.textContent = "完成一次英文对话并保存后，就可以生成长期学习档案";
+    els.learningProfileContent.hidden = true;
+    els.generateLearningProfile.disabled = true;
+    return;
+  }
+
+  els.generateLearningProfile.disabled = false;
+  if (!profile) {
+    els.learningProfileStatus.textContent = `已有 ${count} 条英文记录 · 尚未生成总建议`;
+    els.learningProfileContent.hidden = true;
+    return;
+  }
+
+  const status = data.stale ? "有新记录，更新后会纳入总建议" : "已汇总全部英文对话";
+  els.learningProfileStatus.textContent = `${count} 条英文记录 · ${status}`;
+  const sections = [
+    ["已掌握 / 开始掌握的句式", profile.masteredPatterns, (item) => `${item.pattern}\n${item.evidence}\n下一步：${item.nextStep}`],
+    ["建议积累的短语", profile.usefulPhrases, (item) => `${item.phrase}\n${item.use}`],
+    ["需要避免的用法", profile.avoidUsages, (item) => `${item.usage}\n${item.problem}\n建议：${item.replacement}`],
+    ["反复出现的问题", profile.recurringIssues, (item) => `${item.issue}\n${item.evidence}\n练习：${item.practice}`],
+    ["接下来的练习计划", profile.nextPlan, (item) => String(item)],
+  ];
+  const memory = [...(profile.personalContext || []), ...(profile.strengths || [])];
+  const cards = sections
+    .filter(([, items]) => Array.isArray(items) && items.length)
+    .map(([title, items, format]) => `
+      <section class="learning-advice-item">
+        <h3>${escapeHtml(title)}</h3>
+        <ul>${items.map((item) => `<li>${escapeHtml(format(item)).replaceAll("\n", "<br>")}</li>`).join("")}</ul>
+      </section>`).join("");
+  els.learningProfileContent.innerHTML = `
+    <p class="learning-profile-summary">${escapeHtml(profile.summary || "综合建议已生成。")}</p>
+    ${memory.length ? `<section class="learning-memory"><strong>后续对话可参考</strong><span>${escapeHtml(memory.join(" · "))}</span></section>` : ""}
+    <details class="learning-advice-details">
+      <summary>查看完整建议</summary>
+      <div class="learning-advice-grid">${cards}</div>
+    </details>`;
+  els.learningProfileContent.hidden = false;
 }
 
 function bindMandarin() {
@@ -204,8 +314,41 @@ function bindConfig() {
       els.configMessage.textContent = error.message;
     }
   });
-  $("#refreshRecords").addEventListener("click", loadRecords);
-  $("#refreshStats").addEventListener("click", loadStats);
+  $("#modelConfigForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit']");
+    button.disabled = true;
+    button.textContent = "保存中";
+    els.modelConfigMessage.textContent = "";
+    try {
+      await api("/api/config/models", {
+        realtimeModel: els.realtimeModelSelect.value,
+        textModel: els.textModelSelect.value,
+        translateModel: els.translateModelSelect.value,
+      });
+      els.modelConfigMessage.textContent = "已保存，新请求将使用所选模型";
+      await refreshConfig();
+    } catch (error) {
+      els.modelConfigMessage.textContent = error.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = "保存模型配置";
+    }
+  });
+}
+
+function bindRecords() {
+  $$('[data-record-filter]').forEach((button) => {
+    button.addEventListener("click", () => {
+      state.records.filter = button.dataset.recordFilter || "english";
+      $$('[data-record-filter]').forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      renderFilteredRecords();
+    });
+  });
 }
 
 function bindTopics() {
@@ -223,41 +366,51 @@ function bindCalendar() {
 }
 
 function bindTranslator() {
-  els.translateButton?.addEventListener("click", translateInlineText);
-  els.clearTranslation?.addEventListener("click", () => {
-    els.translateInput.value = "";
-    els.translateOutput.textContent = "翻译结果会显示在这里";
-  });
+  els.translateInput?.addEventListener("input", scheduleInlineTranslation);
+  els.translateDirection?.addEventListener("change", scheduleInlineTranslation);
 }
 
-async function translateInlineText() {
+function scheduleInlineTranslation() {
+  clearTimeout(state.translation.timer);
+  const text = els.translateInput.value.trim();
+  const requestId = ++state.translation.requestId;
+  if (!text) {
+    els.translateOutput.textContent = "翻译结果会显示在这里";
+    els.translateOutput.classList.add("placeholder");
+    return;
+  }
+  els.translateOutput.classList.remove("placeholder");
+  els.translateOutput.textContent = "停止输入后将自动翻译...";
+  state.translation.timer = setTimeout(() => translateInlineText(requestId), 550);
+}
+
+async function translateInlineText(requestId = ++state.translation.requestId) {
   const text = els.translateInput.value.trim();
   if (!text) {
     els.translateOutput.textContent = "先输入一句要翻译的话。";
+    els.translateOutput.classList.add("placeholder");
     return;
   }
 
-  els.translateButton.disabled = true;
-  els.translateButton.textContent = "翻译中";
+  els.translateOutput.classList.remove("placeholder");
   els.translateOutput.textContent = "翻译中...";
   try {
     const result = await api("/api/translate", {
       text,
       direction: els.translateDirection.value,
     });
+    if (requestId !== state.translation.requestId) return;
     els.translateOutput.textContent = result.translated || "没有返回翻译结果。";
   } catch (error) {
+    if (requestId !== state.translation.requestId) return;
     els.translateOutput.textContent = error.message;
-  } finally {
-    els.translateButton.disabled = false;
-    els.translateButton.textContent = "翻译";
   }
 }
 
 function renderTopicShelf(mode) {
   const container = $("#englishTopics");
   const input = $("#englishTopic");
-  const pageSize = 6;
+  const pageSize = 4;
   const topics = topicLibrary[mode];
   const start = (topicPage[mode] * pageSize) % topics.length;
   const visible = [...topics.slice(start), ...topics.slice(0, start)].slice(0, pageSize);
@@ -267,9 +420,12 @@ function renderTopicShelf(mode) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "topic-card";
+    button.classList.toggle("selected", input.value.trim() === topic.title);
     button.innerHTML = `<strong>${escapeHtml(topic.title)}</strong><span>${escapeHtml(topic.detail)}</span>`;
     button.addEventListener("click", () => {
-      input.value = topic.prompt;
+      input.value = topic.title;
+      container.querySelectorAll(".topic-card").forEach((item) => item.classList.remove("selected"));
+      button.classList.add("selected");
     });
     container.append(button);
   });
@@ -279,28 +435,48 @@ async function refreshConfig() {
   try {
     state.config = await fetch("/api/config").then((res) => res.json());
     setKeyStatus(state.config.keyPresent ? "live" : "error", state.config.keyPresent ? "Key 已配置" : "需要配置 Key");
-    els.realtimeModel.textContent = state.config.realtimeModel;
-    els.textModel.textContent = state.config.textModel;
+    renderModelSelect(els.realtimeModelSelect, state.config.modelOptions?.realtimeModel, state.config.realtimeModel);
+    renderModelSelect(els.textModelSelect, state.config.modelOptions?.textModel, state.config.textModel);
+    renderModelSelect(els.translateModelSelect, state.config.modelOptions?.translateModel, state.config.translateModel);
   } catch {
     setKeyStatus("error", "配置不可用");
   }
 }
 
+function renderModelSelect(select, options, selected) {
+  const values = Array.isArray(options) && options.length ? options : [selected];
+  select.replaceChildren(...values.map((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    option.selected = value === selected;
+    return option;
+  }));
+}
+
 async function startEnglishSession() {
+  if (state.english.pc || state.english.starting) return;
+  state.english.starting = true;
+  $("#startEnglish").disabled = true;
   clearAnalysis(els.englishAnalysis);
   resetEnglishTranscript();
-  setEnglishState("busy", "请求麦克风");
+  setEnglishState("busy", els.useLearningMemory.checked ? "整理历史记忆" : "请求麦克风");
 
   try {
+    if (els.useLearningMemory.checked) {
+      const profile = await generateLearningProfile(false);
+      if (profile?.recordCount) setEnglishState("busy", "请求麦克风");
+    }
     const voice = $("#voiceSelect").value;
     const pace = $("#paceSelect").value;
-    const topic = $("#englishTopic").value;
+    const topic = englishTopicPrompt();
 
     const pc = new RTCPeerConnection();
     const remoteAudio = new Audio();
     remoteAudio.autoplay = true;
     const remoteStream = new MediaStream();
     remoteAudio.srcObject = remoteStream;
+    state.english.remoteAudio = remoteAudio;
 
     const micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -344,7 +520,7 @@ async function startEnglishSession() {
     state.english.micStream = micStream;
     state.english.remoteStream = remoteStream;
     startMixedRecorder(micStream);
-    connectAnalyser(micStream);
+    startEnglishMeter();
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -353,6 +529,7 @@ async function startEnglishSession() {
     connectUrl.searchParams.set("voice", voice);
     connectUrl.searchParams.set("pace", pace);
     connectUrl.searchParams.set("topic", topic);
+    connectUrl.searchParams.set("useMemory", els.useLearningMemory.checked ? "1" : "0");
 
     const sdpResponse = await fetch(connectUrl, {
       method: "POST",
@@ -372,22 +549,56 @@ async function startEnglishSession() {
     }
 
     await pc.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
-    $("#startEnglish").disabled = true;
+    state.english.starting = false;
+    $("#pauseEnglish").disabled = false;
     $("#stopEnglish").disabled = false;
     $("#analyzeEnglish").disabled = true;
   } catch (error) {
     state.english.lastError = error.message;
     console.error("English session failed:", error);
     setEnglishState("error", error.message);
+    await stopRecorder("english");
     closeEnglishConnection();
+    state.english.starting = false;
+    $("#startEnglish").disabled = false;
+    $("#stopEnglish").disabled = true;
+    $("#analyzeEnglish").disabled = true;
   }
+}
+
+function toggleEnglishPause() {
+  if (!state.english.pc) return;
+  const shouldPause = !state.english.paused;
+  state.english.paused = shouldPause;
+
+  if (shouldPause) {
+    state.english.pausedAt = performance.now();
+    state.english.micStream?.getAudioTracks().forEach((track) => { track.enabled = false; });
+    [state.english.recorder, state.english.userRecorder].forEach((recorder) => {
+      if (recorder?.state === "recording") recorder.pause();
+    });
+    state.english.remoteAudio?.pause();
+    $("#pauseEnglish").textContent = "继续对话";
+    setEnglishState("busy", "已暂停");
+    resetEnglishMeter();
+    return;
+  }
+
+  finishEnglishPauseWindow();
+  state.english.micStream?.getAudioTracks().forEach((track) => { track.enabled = true; });
+  [state.english.recorder, state.english.userRecorder].forEach((recorder) => {
+    if (recorder?.state === "paused") recorder.resume();
+  });
+  state.english.remoteAudio?.play().catch(() => {});
+  $("#pauseEnglish").textContent = "暂停对话";
+  setEnglishState("live", "轮到你了");
 }
 
 function sendStarterPrompt() {
   const dc = state.english.dc;
   if (!dc || dc.readyState !== "open") return;
 
-  const topic = $("#englishTopic").value || "daily conversation";
+  const topic = englishTopicPrompt();
   dc.send(JSON.stringify({
     type: "conversation.item.create",
     item: {
@@ -402,8 +613,16 @@ function sendStarterPrompt() {
   dc.send(JSON.stringify({ type: "response.create" }));
 }
 
+function englishTopicPrompt() {
+  const value = $("#englishTopic").value.trim() || "随便聊聊";
+  return topicLibrary.english.find((topic) => topic.title === value)?.prompt || value;
+}
+
 async function stopEnglishSession() {
   setEnglishState("busy", "保存中");
+  $("#pauseEnglish").disabled = true;
+  $("#stopEnglish").disabled = true;
+  finishEnglishPauseWindow();
   await stopRecorder("english");
   ensureEnglishDuration();
   closeEnglishConnection();
@@ -423,8 +642,11 @@ async function stopEnglishSession() {
   state.english.sessionId = saved?.id || "";
   loadRecords();
   loadPracticeCalendar();
+  loadLearningProfile();
   setEnglishState("idle", "已保存");
   $("#startEnglish").disabled = false;
+  $("#pauseEnglish").disabled = true;
+  $("#pauseEnglish").textContent = "暂停对话";
   $("#stopEnglish").disabled = true;
   $("#analyzeEnglish").disabled = false;
 }
@@ -435,7 +657,7 @@ async function analyzeEnglishSession() {
     const transcript = transcriptText(state.english.messages);
     const result = await api("/api/analyze", {
       mode: "english",
-      topic: $("#englishTopic").value,
+      topic: englishTopicPrompt(),
       transcript,
       audioBase64: state.english.audioBlob ? await blobToBase64(state.english.audioBlob) : "",
       mimeType: state.english.audioBlob?.type,
@@ -459,6 +681,7 @@ async function analyzeEnglishSession() {
     state.english.sessionId = saved?.id || state.english.sessionId;
     loadRecords();
     loadPracticeCalendar();
+    loadLearningProfile();
     setEnglishState("idle", "分析完成");
   } catch (error) {
     setEnglishState("error", error.message);
@@ -468,9 +691,11 @@ async function analyzeEnglishSession() {
 function handleRealtimeEvent(message) {
   const event = JSON.parse(message.data);
 
-  if (event.type === "input_audio_buffer.speech_started") setEnglishState("live", "你在说话");
-  if (event.type === "input_audio_buffer.speech_stopped") setEnglishState("busy", "正在回应");
-  if (event.type === "response.done") setEnglishState("live", "轮到你了");
+  if (!state.english.paused) {
+    if (event.type === "input_audio_buffer.speech_started") setEnglishState("live", "你在说话");
+    if (event.type === "input_audio_buffer.speech_stopped") setEnglishState("busy", "正在回应");
+    if (event.type === "response.done") setEnglishState("live", "轮到你了");
+  }
   if (event.type === "error") setEnglishState("error", event.error?.message || "Realtime error");
 
   if (event.type === "conversation.item.input_audio_transcription.delta") {
@@ -506,7 +731,7 @@ async function generateReading() {
     state.mandarin.material = material;
     els.readingTitle.textContent = material.title;
     els.readingText.textContent = material.text;
-    els.readingTimer.textContent = formatSeconds(material.targetSeconds);
+    els.readingTimer.textContent = `倒计时 ${formatSeconds(material.targetSeconds)}`;
     $("#startReading").disabled = false;
   } catch (error) {
     els.readingTitle.textContent = "抽取失败";
@@ -573,6 +798,7 @@ async function stopReadingRecording(save) {
       state.mandarin.sessionId = saved?.id || "";
       loadRecords();
       loadPracticeCalendar();
+      loadLearningProfile();
     }, 100);
   }
 }
@@ -616,10 +842,19 @@ async function loadRecords() {
     const response = await fetch("/api/sessions");
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "无法加载练习记录");
-    renderRecords(withPracticeNumbers(data.sessions || []));
+    state.records.sessions = withPracticeNumbers(data.sessions || []);
+    renderFilteredRecords();
   } catch (error) {
     els.recordsList.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   }
+}
+
+function renderFilteredRecords() {
+  const { filter, sessions } = state.records;
+  const visibleSessions = sessions.filter(
+    (session) => (session.mode === "mandarin" ? "mandarin" : "english") === filter,
+  );
+  renderRecords(visibleSessions, sessions.length > 0);
 }
 
 async function loadStats() {
@@ -735,26 +970,15 @@ function renderStats(sessions) {
   const scored = sessions
     .map((session) => ({ ...session, score: scoreFromSession(session) }))
     .filter((session) => session.score !== null);
-  const averageScore = scored.length
-    ? Math.round(scored.reduce((sum, session) => sum + session.score, 0) / scored.length)
-    : null;
 
   els.statsSummary.innerHTML = `
-    <article class="stat-card">
-      <span>总练习时长</span>
-      <strong>${escapeHtml(formatDurationLong(englishMs + mandarinMs))}</strong>
-    </article>
     <article class="stat-card english">
-      <span>英语</span>
+      <span>英语总练习时长</span>
       <strong>${escapeHtml(formatDurationLong(englishMs))}</strong>
     </article>
     <article class="stat-card mandarin">
-      <span>中文</span>
+      <span>中文总练习时长</span>
       <strong>${escapeHtml(formatDurationLong(mandarinMs))}</strong>
-    </article>
-    <article class="stat-card">
-      <span>平均分</span>
-      <strong>${averageScore === null ? "-" : `${averageScore}分`}</strong>
     </article>
   `;
 
@@ -922,21 +1146,6 @@ function renderDailyStats(sessions) {
         }).join("")}
       </svg>
     </div>
-    <div class="daily-breakdown-grid">
-      ${rows.slice().reverse().map(([key, group]) => {
-        const total = group.english + group.mandarin;
-        return `
-          <article class="daily-breakdown-card">
-            <strong>${escapeHtml(formatDateKey(key))}</strong>
-            <span>${group.count} 条 · ${escapeHtml(formatDurationLong(total))}</span>
-            <div class="daily-breakdown">
-              <span>英 ${escapeHtml(formatDurationLong(group.english))}</span>
-              <span>中 ${escapeHtml(formatDurationLong(group.mandarin))}</span>
-            </div>
-          </article>
-        `;
-      }).join("")}
-    </div>
   `;
 }
 
@@ -946,7 +1155,42 @@ function renderScoreTrend(scored) {
     return;
   }
 
-  const sorted = [...scored].sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+  const mode = state.scoreTrendMode;
+  const group = mode === "mandarin"
+    ? { mode: "mandarin", label: "中文得分", colorClass: "mandarin" }
+    : { mode: "english", label: "英文得分", colorClass: "english" };
+  const sessions = scored
+    .filter((session) => (session.mode === "mandarin" ? "mandarin" : "english") === group.mode)
+    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+
+  els.scoreTrend.innerHTML = `
+    <div class="record-filter score-trend-filter" role="group" aria-label="选择得分趋势语言">
+      <button class="${mode === "english" ? "active" : ""}" type="button" data-score-trend-mode="english" aria-pressed="${mode === "english"}">英文</button>
+      <button class="${mode === "mandarin" ? "active" : ""}" type="button" data-score-trend-mode="mandarin" aria-pressed="${mode === "mandarin"}">中文</button>
+    </div>
+    ${renderLanguageScoreTrend(sessions, group)}
+  `;
+  els.scoreTrend.querySelectorAll("[data-score-trend-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.scoreTrendMode = button.dataset.scoreTrendMode || "english";
+      renderScoreTrend(scored);
+    });
+  });
+}
+
+function renderLanguageScoreTrend(sorted, { mode, label, colorClass }) {
+  if (!sorted.length) {
+    return `
+      <section class="language-trend">
+        <div class="language-trend-head">
+          <h4><i class="legend-dot ${colorClass}-dot"></i>${label}</h4>
+          <span>暂无记录</span>
+        </div>
+        <div class="empty-state">完成${mode === "mandarin" ? "中文朗读" : "英文对话"}点评后，这里会显示趋势。</div>
+      </section>
+    `;
+  }
+
   const margin = { top: 28, right: 24, bottom: 58, left: 68 };
   const maxSequence = Math.max(1, ...sorted.map((session) => Number(session.practiceNumber || 0)));
   const width = Math.max(760, maxSequence * 76 + margin.left + margin.right);
@@ -955,68 +1199,63 @@ function renderScoreTrend(scored) {
   const plotHeight = height - margin.top - margin.bottom;
   const xForNumber = (number) => margin.left + (Number(number || 0) / maxSequence) * plotWidth;
   const yForScore = (score) => margin.top + plotHeight - (score / 100) * plotHeight;
-  const pointFor = (session) => {
+  const points = sorted.map((session) => {
     const x = xForNumber(session.practiceNumber);
     const y = yForScore(session.score);
-    return { x, y, text: `${x.toFixed(2)},${y.toFixed(2)}` };
-  };
-  const modePoints = (mode) => sorted
-    .map((session) => ({ session, point: pointFor(session) }))
-    .filter(({ session }) => (session.mode === "mandarin" ? "mandarin" : "english") === mode);
-  const englishPoints = modePoints("english");
-  const mandarinPoints = modePoints("mandarin");
+    return { session, point: { x, y, text: `${x.toFixed(2)},${y.toFixed(2)}` } };
+  });
   const scoreTicks = [0, 20, 40, 60, 80, 100];
   const sequenceTicks = chartSequenceTicks(maxSequence, 10);
 
-  els.scoreTrend.innerHTML = `
-    <div class="chart-legend">
-      <span><i class="legend-dot english-dot"></i>英语</span>
-      <span><i class="legend-dot mandarin-dot"></i>中文</span>
-    </div>
-    <div class="chart-scroll">
-      <svg class="axis-chart trend-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-label="得分趋势图">
-        ${scoreTicks.map((tick) => {
-          const y = yForScore(tick);
-          return `
-            <line class="grid-line" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>
-            <text class="axis-tick" x="${margin.left - 10}" y="${(y + 4).toFixed(2)}" text-anchor="end">${tick}</text>
-          `;
-        }).join("")}
-        <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
-        <line class="axis-line" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
-        <text class="axis-label" x="${margin.left}" y="16" text-anchor="start">分数</text>
-        <text class="axis-label" x="${width - margin.right}" y="${height - 10}" text-anchor="end">练习序号</text>
-        ${sequenceTicks.map((tick) => {
-          const x = xForNumber(tick);
-          return `
-            <line class="x-grid-line" x1="${x.toFixed(2)}" y1="${margin.top}" x2="${x.toFixed(2)}" y2="${height - margin.bottom}"></line>
-            <text class="x-tick" x="${x.toFixed(2)}" y="${height - 31}" text-anchor="middle">${tick}</text>
-          `;
-        }).join("")}
-        ${englishPoints.length > 1 ? `<polyline class="english-line" points="${englishPoints.map(({ point }) => point.text).join(" ")}"></polyline>` : ""}
-        ${mandarinPoints.length > 1 ? `<polyline class="mandarin-line" points="${mandarinPoints.map(({ point }) => point.text).join(" ")}"></polyline>` : ""}
-        ${englishPoints.map(({ point, session }) => `<circle class="english-point" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4"><title>${escapeHtml(scoreChartTitle(session))}</title></circle>`).join("")}
-        ${mandarinPoints.map(({ point, session }) => `<circle class="mandarin-point" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4"><title>${escapeHtml(scoreChartTitle(session))}</title></circle>`).join("")}
-      </svg>
-    </div>
-    <div class="score-list">
-      ${sorted.slice(-12).reverse().map((session) => `
-        <article class="score-row">
-          <span class="practice-code ${session.mode === "mandarin" ? "mandarin-code" : "english-code"}">${escapeHtml(session.practiceCode || "")}</span>
-          <span class="score-tag ${session.mode === "mandarin" ? "mandarin-score" : "english-score"}">${escapeHtml(scoreTagFromSession(session))}</span>
-          <div>
-            <strong>${escapeHtml(session.title || (session.mode === "mandarin" ? "普通话朗读" : "英语对话"))}</strong>
-            <span>${escapeHtml(session.mode === "mandarin" ? "中文普通话" : "英语实时对话")} · ${escapeHtml(formatDate(session.createdAt || session.updatedAt))}</span>
-          </div>
-        </article>
-      `).join("")}
-    </div>
+  return `
+    <section class="language-trend">
+      <div class="language-trend-head">
+        <h4><i class="legend-dot ${colorClass}-dot"></i>${label}</h4>
+        <span>${sorted.length} 条已评分记录</span>
+      </div>
+      <div class="chart-scroll">
+        <svg class="axis-chart trend-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-label="${label}趋势图">
+          ${scoreTicks.map((tick) => {
+            const y = yForScore(tick);
+            return `
+              <line class="grid-line" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>
+              <text class="axis-tick" x="${margin.left - 10}" y="${(y + 4).toFixed(2)}" text-anchor="end">${tick}</text>
+            `;
+          }).join("")}
+          <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>
+          <line class="axis-line" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>
+          <text class="axis-label" x="${margin.left}" y="16" text-anchor="start">分数</text>
+          <text class="axis-label" x="${width - margin.right}" y="${height - 10}" text-anchor="end">练习序号</text>
+          ${sequenceTicks.map((tick) => {
+            const x = xForNumber(tick);
+            return `
+              <line class="x-grid-line" x1="${x.toFixed(2)}" y1="${margin.top}" x2="${x.toFixed(2)}" y2="${height - margin.bottom}"></line>
+              <text class="x-tick" x="${x.toFixed(2)}" y="${height - 31}" text-anchor="middle">${tick}</text>
+            `;
+          }).join("")}
+          ${points.length > 1 ? `<polyline class="${colorClass}-line" points="${points.map(({ point }) => point.text).join(" ")}"></polyline>` : ""}
+          ${points.map(({ point, session }) => `<circle class="${colorClass}-point" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4"><title>${escapeHtml(scoreChartTitle(session))}</title></circle>`).join("")}
+        </svg>
+      </div>
+      <div class="score-list trend-score-list">
+        ${sorted.slice(-8).reverse().map((session) => `
+          <article class="score-row">
+            <span class="practice-code ${colorClass}-code">${escapeHtml(session.practiceCode || "")}</span>
+            <span class="score-tag ${colorClass}-score">${escapeHtml(scoreTagFromSession(session))}</span>
+            <div>
+              <strong>${escapeHtml(session.title || (mode === "mandarin" ? "普通话朗读" : "英语对话"))}</strong>
+              <span>${escapeHtml(formatDate(session.createdAt || session.updatedAt))}</span>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
-function renderRecords(sessions) {
+function renderRecords(sessions, hasAnyRecords = sessions.length > 0) {
   if (!sessions.length) {
-    els.recordsList.innerHTML = `<div class="empty-state">还没有练习记录。完成一次保存后，这里会出现音频、文本和点评文件。</div>`;
+    els.recordsList.innerHTML = `<div class="empty-state">${hasAnyRecords ? "这个分类下还没有练习记录。" : "还没有练习记录。完成一次保存后，这里会出现音频、文本和点评文件。"}</div>`;
     return;
   }
 
@@ -1025,7 +1264,7 @@ function renderRecords(sessions) {
     const card = document.createElement("article");
     card.className = "record-card";
     const title = session.title || (session.mode === "mandarin" ? "普通话朗读" : "英语对话");
-    const modeLabel = session.mode === "mandarin" ? "中文普通话" : "英语实时对话";
+    const modeLabel = session.mode === "mandarin" ? "中文普通话" : "英文对话";
     const files = session.files || {};
     const audioUrl = files.audio ? sessionFileUrl(session.id, files.audio) : "";
     const transcript = session.mode === "mandarin" ? "" : session.transcript || "";
@@ -1041,7 +1280,6 @@ function renderRecords(sessions) {
         <div class="record-side">
           ${session.practiceCode ? `<span class="practice-code ${session.mode === "mandarin" ? "mandarin-code" : "english-code"}">${escapeHtml(session.practiceCode)}</span>` : ""}
           <div data-score-slot>${scoreTag ? `<span class="score-tag">${escapeHtml(scoreTag)}</span>` : ""}</div>
-          <code>${escapeHtml(session.sessionDir || session.id)}</code>
         </div>
       </div>
       ${audioUrl ? `
@@ -1069,12 +1307,12 @@ function renderRecords(sessions) {
       ` : ""}
       ${analysisSummary ? `
         <section class="record-text" data-record-section="analysis" hidden>
-          <h4>点评</h4>
+          <h4>点评回顾</h4>
           <pre>${escapeHtml(analysisSummary)}</pre>
         </section>
       ` : `
         <section class="record-text" data-record-section="analysis" hidden>
-          <h4>点评</h4>
+          <h4>点评回顾</h4>
           <pre>还没有点评。点击“重新点评”生成。</pre>
         </section>
       `}
@@ -1089,7 +1327,7 @@ function renderRecordToggles(session) {
   const controls = [];
   if (session.referenceText) controls.push(`<button class="file-link" type="button" data-toggle-record="reference">文本</button>`);
   if (session.mode !== "mandarin" && session.transcript) controls.push(`<button class="file-link" type="button" data-toggle-record="transcript">文本</button>`);
-  controls.push(`<button class="file-link" type="button" data-toggle-record="analysis">点评</button>`);
+  controls.push(`<button class="file-link" type="button" data-toggle-record="analysis">点评回顾</button>`);
   return controls.join("");
 }
 
@@ -1143,6 +1381,7 @@ function bindRecordCard(card) {
       const scoreTag = scoreTagFromSession(fresh || saved || {});
       if (scoreSlot) scoreSlot.innerHTML = scoreTag ? `<span class="score-tag">${escapeHtml(scoreTag)}</span>` : "";
       loadPracticeCalendar();
+      loadLearningProfile();
     } catch (error) {
       if (pre) pre.textContent = error.message;
     } finally {
@@ -1162,10 +1401,7 @@ function bindRecordCard(card) {
     button.textContent = "删除中";
     try {
       await deleteSession(sessionId);
-      card.remove();
-      if (!els.recordsList.querySelector(".record-card")) {
-        els.recordsList.innerHTML = `<div class="empty-state">还没有练习记录。完成一次保存后，这里会出现音频、文本和点评文件。</div>`;
-      }
+      await loadRecords();
       loadPracticeCalendar();
     } catch (error) {
       button.disabled = false;
@@ -1277,35 +1513,53 @@ function startMixedRecorder(micStream) {
   state.english.userAudioBlob = null;
   state.english.startedAt = performance.now();
   state.english.durationMs = 0;
+  state.english.paused = false;
+  state.english.pausedAt = 0;
+  state.english.pausedDurationMs = 0;
   const audioContext = new AudioContext();
   const destination = audioContext.createMediaStreamDestination();
-  audioContext.createMediaStreamSource(micStream).connect(destination);
+  const micSource = audioContext.createMediaStreamSource(micStream);
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.88;
+  micSource.connect(destination);
+  micSource.connect(analyser);
+  state.english.analyser = analyser;
+  audioContext.resume().catch(() => {});
   state.english.mixer = { audioContext, destination };
-  state.english.recorder = new MediaRecorder(destination.stream);
-  state.english.recorder.ondataavailable = (event) => {
+  const recorder = new MediaRecorder(destination.stream);
+  state.english.recorder = recorder;
+  recorder.ondataavailable = (event) => {
     if (event.data.size) state.english.chunks.push(event.data);
   };
-  state.english.recorder.onstop = () => {
-    state.english.durationMs = Math.max(0, Math.round(performance.now() - state.english.startedAt));
-    state.english.audioBlob = new Blob(state.english.chunks, { type: state.english.recorder.mimeType || "audio/webm" });
+  recorder.onstop = () => {
+    state.english.durationMs = getEnglishElapsedMs();
+    state.english.audioBlob = new Blob(state.english.chunks, { type: recorder.mimeType || "audio/webm" });
   };
-  state.english.recorder.start(250);
+  recorder.start(250);
 
-  state.english.userRecorder = new MediaRecorder(micStream);
-  state.english.userRecorder.ondataavailable = (event) => {
+  const userRecorder = new MediaRecorder(micStream);
+  state.english.userRecorder = userRecorder;
+  userRecorder.ondataavailable = (event) => {
     if (event.data.size) state.english.userChunks.push(event.data);
   };
-  state.english.userRecorder.onstop = () => {
-    state.english.userAudioBlob = new Blob(state.english.userChunks, { type: state.english.userRecorder.mimeType || "audio/webm" });
+  userRecorder.onstop = () => {
+    state.english.userAudioBlob = new Blob(state.english.userChunks, { type: userRecorder.mimeType || "audio/webm" });
   };
-  state.english.userRecorder.start(250);
+  userRecorder.start(250);
 }
 
 function attachRemoteToRecorder(remoteStream) {
   const mixer = state.english.mixer;
   if (!mixer || state.english.remoteRecorderAttached) return;
   try {
-    mixer.audioContext.createMediaStreamSource(remoteStream).connect(mixer.destination);
+    const remoteSource = mixer.audioContext.createMediaStreamSource(remoteStream);
+    const remoteAnalyser = mixer.audioContext.createAnalyser();
+    remoteAnalyser.fftSize = 256;
+    remoteAnalyser.smoothingTimeConstant = 0.88;
+    remoteSource.connect(mixer.destination);
+    remoteSource.connect(remoteAnalyser);
+    state.english.remoteAnalyser = remoteAnalyser;
     state.english.remoteRecorderAttached = true;
   } catch {
   }
@@ -1323,30 +1577,57 @@ function stopRecorder(mode) {
 
 function ensureEnglishDuration() {
   if (state.english.durationMs || !state.english.startedAt) return;
-  state.english.durationMs = Math.max(0, Math.round(performance.now() - state.english.startedAt));
+  state.english.durationMs = getEnglishElapsedMs();
+}
+
+function getEnglishElapsedMs() {
+  if (!state.english.startedAt) return 0;
+  const currentPause = state.english.pausedAt ? performance.now() - state.english.pausedAt : 0;
+  return Math.max(0, Math.round(
+    performance.now() - state.english.startedAt - state.english.pausedDurationMs - currentPause,
+  ));
+}
+
+function finishEnglishPauseWindow() {
+  if (state.english.pausedAt) {
+    state.english.pausedDurationMs += performance.now() - state.english.pausedAt;
+  }
+  state.english.pausedAt = 0;
+  state.english.paused = false;
 }
 
 function closeEnglishConnection() {
+  finishEnglishPauseWindow();
+  stopEnglishMeter();
   state.english.dc?.close();
   state.english.pc?.close();
   state.english.micStream?.getTracks().forEach((track) => track.stop());
   state.english.remoteStream?.getTracks().forEach((track) => track.stop());
   state.english.mixer?.audioContext?.close();
+  state.english.meterContext?.close?.();
+  if (state.english.remoteAudio) state.english.remoteAudio.srcObject = null;
   state.english.pc = null;
   state.english.dc = null;
   state.english.userRecorder = null;
   state.english.micStream = null;
   state.english.remoteStream = null;
+  state.english.remoteAudio = null;
+  state.english.analyser = null;
+  state.english.remoteAnalyser = null;
+  state.english.meterContext = null;
   state.english.remoteRecorderAttached = false;
+  $("#pauseEnglish").disabled = true;
+  $("#pauseEnglish").textContent = "暂停对话";
+  resetEnglishMeter();
 }
 
 function startCountdown(seconds) {
   clearInterval(state.mandarin.timer);
   state.mandarin.remaining = seconds;
-  els.readingTimer.textContent = formatSeconds(state.mandarin.remaining);
+  els.readingTimer.textContent = `倒计时 ${formatSeconds(state.mandarin.remaining)}`;
   state.mandarin.timer = setInterval(() => {
     state.mandarin.remaining -= 1;
-    els.readingTimer.textContent = formatSeconds(Math.max(0, state.mandarin.remaining));
+    els.readingTimer.textContent = `倒计时 ${formatSeconds(Math.max(0, state.mandarin.remaining))}`;
     if (state.mandarin.remaining <= 0) stopReadingRecording(true);
   }, 1000);
 }
@@ -1369,6 +1650,9 @@ function resetEnglishTranscript() {
   state.english.lastError = "";
   state.english.sessionId = "";
   state.english.durationMs = 0;
+  state.english.paused = false;
+  state.english.pausedAt = 0;
+  state.english.pausedDurationMs = 0;
   state.english.messages = [];
   state.english.currentAssistant = "";
   state.english.currentUser = "";
@@ -1488,6 +1772,7 @@ function connectAnalyser(stream, mode = "english") {
     context.createMediaStreamSource(stream).connect(analyser);
     state[mode].analyser = analyser;
     state[mode].meterContext = context;
+    context.resume().catch(() => {});
   } catch {
   }
 }
@@ -1496,6 +1781,92 @@ function startMandarinMeter() {
   stopMandarinMeter();
   state.mandarin.meterTimer = setInterval(updateMandarinMeter, 120);
   updateMandarinMeter();
+}
+
+function startEnglishMeter() {
+  stopEnglishMeter();
+  const drawFrame = () => {
+    updateEnglishMeter();
+    state.english.meterTimer = requestAnimationFrame(drawFrame);
+  };
+  drawFrame();
+}
+
+function stopEnglishMeter() {
+  if (state.english.meterTimer) cancelAnimationFrame(state.english.meterTimer);
+  state.english.meterTimer = null;
+}
+
+function updateEnglishMeter() {
+  if (state.english.paused) {
+    resetEnglishMeter();
+    return;
+  }
+  drawVoiceScope(state.english.analyser, state.english.remoteAnalyser);
+}
+
+function resetEnglishMeter() {
+  drawVoiceScope();
+}
+
+function drawVoiceScope(userAnalyser = null, coachAnalyser = null) {
+  const canvas = els.englishWaveCanvas;
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.round(rect.width * dpr));
+  const height = Math.max(1, Math.round(rect.height * dpr));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const context = canvas.getContext("2d");
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, rect.width, rect.height);
+  if (!userAnalyser && !coachAnalyser) {
+    state.english.scopeLevels.user.fill(0);
+    state.english.scopeLevels.coach.fill(0);
+  }
+  drawScopeChannel(context, userAnalyser, state.english.scopeLevels.user, rect.width, rect.height, -1, "#3974d8");
+  drawScopeChannel(context, coachAnalyser, state.english.scopeLevels.coach, rect.width, rect.height, 1, "#d94b82");
+}
+
+function drawScopeChannel(context, analyser, levels, width, height, direction, color) {
+  const center = height / 2;
+  const padding = 10;
+  const points = 44;
+  const data = new Uint8Array(analyser?.fftSize || 128);
+  if (analyser) analyser.getByteTimeDomainData(data);
+  else data.fill(128);
+
+  let energy = 0;
+  const amplitudes = Array.from({ length: points }, (_, index) => {
+    const sample = data[Math.floor((index / (points - 1)) * (data.length - 1))];
+    const raw = Math.abs((sample - 128) / 128);
+    const target = raw < 0.035 ? 0 : Math.min(1, (raw - 0.035) * 3.2);
+    const response = target > levels[index] ? 0.18 : 0.07;
+    levels[index] += (target - levels[index]) * response;
+    energy += levels[index];
+    return levels[index];
+  });
+  energy /= points;
+
+  context.save();
+  context.beginPath();
+  amplitudes.forEach((amplitude, index) => {
+    const x = padding + (index / (points - 1)) * (width - padding * 2);
+    const edgeFade = Math.sin((index / (points - 1)) * Math.PI);
+    const y = center + direction * (0.7 + amplitude * edgeFade * (height * 0.32));
+    if (!index) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  });
+  context.lineWidth = energy > 0.035 ? 1.6 : 1;
+  context.lineJoin = "round";
+  context.lineCap = "round";
+  context.strokeStyle = color;
+  context.globalAlpha = energy > 0.035 ? 0.82 : 0.3;
+  context.stroke();
+  context.restore();
 }
 
 function stopMandarinMeter() {
@@ -1507,13 +1878,15 @@ function updateMandarinMeter() {
   const elapsed = state.mandarin.startedAt ? Math.max(0, performance.now() - state.mandarin.startedAt) : 0;
   els.mandarinElapsed.textContent = formatDurationMs(elapsed);
 
-  const analyser = state.mandarin.analyser;
+  updateAudioLevel(state.mandarin.analyser, els.mandarinDb, els.mandarinLevelBar);
+}
+
+function updateAudioLevel(analyser, dbElement, barElement) {
   if (!analyser) {
-    els.mandarinDb.textContent = "-- dB";
-    els.mandarinLevelBar.style.width = "0%";
+    dbElement.textContent = "-- dB";
+    barElement.style.width = "0%";
     return;
   }
-
   const samples = new Uint8Array(analyser.fftSize);
   analyser.getByteTimeDomainData(samples);
   let sum = 0;
@@ -1524,52 +1897,12 @@ function updateMandarinMeter() {
   const rms = Math.sqrt(sum / samples.length);
   const db = rms > 0 ? Math.max(-60, Math.round(20 * Math.log10(rms))) : -60;
   const level = Math.min(100, Math.max(0, ((db + 60) / 60) * 100));
-  els.mandarinDb.textContent = `${db} dB`;
-  els.mandarinLevelBar.style.width = `${level}%`;
+  dbElement.textContent = `${db} dB`;
+  barElement.style.width = `${level}%`;
 }
 
 function setMandarinMeterState(text) {
   els.mandarinRecordState.textContent = text;
-}
-
-function drawSignal() {
-  const canvas = $("#signalCanvas");
-  const ctx = canvas.getContext("2d");
-  const bars = new Uint8Array(64);
-
-  function frame() {
-    const width = canvas.width;
-    const height = canvas.height;
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#10231f";
-    ctx.fillRect(0, 0, width, height);
-    ctx.strokeStyle = "rgba(255,255,255,0.14)";
-    ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 60) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-
-    if (state.english.analyser) state.english.analyser.getByteFrequencyData(bars);
-    const barWidth = width / bars.length;
-    for (let i = 0; i < bars.length; i += 1) {
-      const value = state.english.analyser ? bars[i] / 255 : 0.12 + Math.sin(Date.now() / 600 + i) * 0.04;
-      const h = 20 + value * (height * 0.68);
-      const x = i * barWidth;
-      const hueColor = i % 3 === 0 ? "#66d2c7" : i % 3 === 1 ? "#f29b72" : "#9fbff0";
-      ctx.fillStyle = hueColor;
-      ctx.fillRect(x + 2, height - h - 28, Math.max(3, barWidth - 5), h);
-    }
-
-    ctx.fillStyle = "rgba(255,255,255,0.78)";
-    ctx.font = "700 18px system-ui";
-    ctx.fillText("Live voice signal", 26, height - 28);
-    requestAnimationFrame(frame);
-  }
-
-  frame();
 }
 
 function blobToBase64(blob) {
@@ -1706,6 +2039,12 @@ function labelize(key) {
   const labels = {
     summary: "总结",
     score: "分数",
+    scoreBreakdown: "分项得分",
+    communication: "沟通完成度",
+    readingAccuracy: "朗读准确度",
+    pronunciationClarity: "发音清晰度",
+    toneControl: "声调控制",
+    rhythmBreath: "节奏与气息",
     pronunciation: "发音",
     stressAndRhythm: "重音和节奏",
     fluency: "流畅度",

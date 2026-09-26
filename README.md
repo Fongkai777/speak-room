@@ -115,28 +115,6 @@ PORT=4000
         └── metadata.json
 ```
 
-## 前后端职责
-
-浏览器负责麦克风权限、WebRTC 连接、实时音频播放、`MediaRecorder` 录音、对话文本、声波、倒计时，以及记录、图表、日历和翻译界面。
-
-FastAPI 服务负责：
-
-- 从本地读取 API Key，浏览器端不接触项目 Key。
-- 代理 Realtime 会话建立，并调用 Responses API 与转写 API。
-- 保存、读取、重新点评和删除练习记录。
-- 生成英文长期学习档案，并在启用时把压缩后的记忆注入新会话。
-- 对中英文分项得分进行标准化和加权，避免模型直接决定最终总分。
-
-实时音频在浏览器与 OpenAI 之间通过 WebRTC 传输。服务端只负责建立连接和保存练习结果。
-
-## 本地数据与隐私
-
-每段练习保存在 `practice-sessions/<session-id>/`。该目录、`.env.local`、虚拟环境和缓存文件都已被 `.gitignore` 排除，不会随代码推送到 GitHub。
-
-英文记录通常包含双方混合音频 `audio.webm`、用户单独录音 `user_audio.webm`、`transcript.txt`、`analysis.json` 和 `metadata.json`。中文记录包含朗读音频、原文、用于评分的转写、点评和元数据。
-
-英文长期学习档案保存在 `practice-sessions/english-learning-profile.json`，同样不会提交到 GitHub。
-
 ## 点评与评分说明
 
 点评流程会先转写录音，再结合参考文本、对话文本和低置信度片段生成结构化建议。

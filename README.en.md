@@ -114,28 +114,6 @@ Configuration precedence is: existing process environment, `.env`, then `.env.lo
         └── metadata.json
 ```
 
-## Client And Server Responsibilities
-
-The browser handles microphone permission, WebRTC, realtime playback, `MediaRecorder`, transcripts, waveforms, countdowns, and the records, charts, calendar, and translation interfaces.
-
-The FastAPI server handles:
-
-- Reading the local API key without exposing it to browser code.
-- Realtime negotiation plus Responses API and transcription API requests.
-- Saving, loading, reanalyzing, and deleting practice records.
-- Building an English learner profile and injecting compact memory into a new session when enabled.
-- Normalizing and weighting English and Mandarin dimensions instead of trusting a model-selected total.
-
-Realtime audio flows directly between the browser and OpenAI over WebRTC. The server negotiates the connection and stores results.
-
-## Local Data And Privacy
-
-Each session is stored under `practice-sessions/<session-id>/`. That directory, `.env.local`, the virtual environment, and caches are excluded by `.gitignore` and are not pushed to GitHub.
-
-English records normally contain mixed audio, user-only audio, transcript, feedback, and metadata. Mandarin records contain reading audio, source passage, a transcription used for scoring, feedback, and metadata.
-
-The English learner profile is stored at `practice-sessions/english-learning-profile.json` and is also excluded from GitHub.
-
 ## Feedback And Scoring
 
 The feedback pipeline transcribes saved audio, then creates structured suggestions from transcripts, source text, and available low-confidence fragments.

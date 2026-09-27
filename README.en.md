@@ -1,10 +1,10 @@
 # Speak Room
 
-[中文版](README.md)
+[简体中文](README.md) · English
 
-Speak Room is a local bilingual speaking-practice assistant for English realtime conversation, Mandarin reading, recording and transcript review, AI feedback, long-term learning advice, and practice statistics.
+Speak Room is a local bilingual speaking practice app for realtime English conversation, Mandarin reading, practice records, AI feedback, long-term learning advice, and progress tracking.
 
-The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, and JavaScript. English conversation streams audio through the OpenAI Realtime API and WebRTC.
+It is built with **Python, FastAPI, HTML, CSS, and JavaScript**. English conversations stream realtime audio through the OpenAI Realtime API and WebRTC.
 
 ## Features
 
@@ -25,7 +25,7 @@ The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, 
 - Separate Start Recording, End and Save, and Generate Feedback actions.
 - Feedback focuses on reading accuracy, pronunciation clarity, tones, fluency, and rhythm.
 
-### Feedback And Scoring
+### Feedback and Scoring
 
 Feedback combines audio transcription, reference text, and low-confidence fragments into structured suggestions.
 
@@ -34,7 +34,7 @@ Feedback combines audio transcription, reference text, and low-confidence fragme
 
 Feedback is inferred from transcription and models; it is not professional phoneme, tone-curve, or tongue-position measurement.
 
-### Records, Statistics, And Learning Advice
+### Records, Statistics, and Learning Advice
 
 - Separate English and Mandarin tabs in Practice Records.
 - Seekable audio, collapsed text, feedback review, reanalysis, and deletion for each record.
@@ -42,7 +42,7 @@ Feedback is inferred from transcription and models; it is not professional phone
 - English and Mandarin score-trend tabs with independent numbering and x-axes.
 - Learning Advice analyzes all English transcripts for learned patterns, useful phrases, usages to avoid, recurring issues, and next steps.
 
-### Practice Calendar And Translation
+### Practice Calendar and Translation
 
 - The calendar marks English and Mandarin practice dates with blue, red, or split-color squares.
 - Sidebar translation with auto-detect, Chinese-to-English, and English-to-Chinese modes.
@@ -57,11 +57,15 @@ Feedback is inferred from transcription and models; it is not professional phone
 
 Python 3.9 or later is required. Python 3.12 is recommended.
 
+### 1. Install Dependencies
+
 ```bash
 cd "/path/to/speak-room"
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
+
+### 2. Configure the API Key
 
 Create `.env.local`:
 
@@ -71,15 +75,19 @@ OPENAI_API_KEY="sk-..."
 
 You can also start the app first and save the key from Model Configuration.
 
-Start the server:
+### 3. Start the Server
 
 ```bash
 PORT=4000 .venv/bin/python -B server.py
 ```
 
-Open `http://127.0.0.1:4000`. The server runs in the foreground, so keep that terminal open. Press `Ctrl+C` to stop it.
+The server runs in the foreground, so keep that terminal open. Press `Ctrl+C` to stop it.
 
-On Windows:
+### 4. Open the App
+
+Visit [http://127.0.0.1:4000](http://127.0.0.1:4000).
+
+Windows startup command:
 
 ```powershell
 $env:PORT=4000
@@ -117,7 +125,7 @@ For higher-accuracy transcription, set `OPENAI_TRANSCRIBE_MODEL` to `gpt-4o-tran
 
 ## Troubleshooting
 
-**The page does not open**
+### The Page Does Not Open
 
 Make sure the server terminal is still open and visit `http://127.0.0.1:4000`. Check the port with:
 
@@ -125,7 +133,7 @@ Make sure the server terminal is still open and visit `http://127.0.0.1:4000`. C
 lsof -nP -iTCP:4000 -sTCP:LISTEN
 ```
 
-**Port 4000 is already in use**
+### Port 4000 Is Already in Use
 
 Stop the previous server or use another port:
 
@@ -133,14 +141,14 @@ Stop the previous server or use another port:
 PORT=4001 .venv/bin/python -B server.py
 ```
 
-**Realtime conversation closes or fails**
+### Realtime Conversation Closes or Fails
 
 Reload and start a fresh session.
 
-**Feedback fails**
+### Feedback Fails
 
 Audio is saved locally first. Open Practice Records and select Reanalyze.
 
-**Microphone permission is unavailable**
+### Microphone Permission Is Unavailable
 
 Check browser permissions and use `localhost`, `127.0.0.1`, or HTTPS.

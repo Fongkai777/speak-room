@@ -1,10 +1,10 @@
 # Speak Room
 
-[English](README.en.md)
+简体中文 · [English](README.en.md)
 
-Speak Room 是一个本地运行的双语口语练习助手，包含英语实时对话、中文普通话朗读、录音与文本归档、AI 点评、长期学习建议和练习统计。
+Speak Room 是一个本地运行的双语口语练习应用，包含英语实时对话、中文普通话朗读、练习记录、AI 点评、长期学习建议和进度统计。
 
-后端使用 **Python + FastAPI**，前端使用原生 HTML、CSS 和 JavaScript。英语对话通过 OpenAI Realtime API + WebRTC 传输实时音频。
+技术栈为 **Python、FastAPI、HTML、CSS 和 JavaScript**。英语对话通过 OpenAI Realtime API 与 WebRTC 传输实时音频。
 
 ## 主要功能
 
@@ -58,11 +58,15 @@ Speak Room 是一个本地运行的双语口语练习助手，包含英语实时
 
 需要 Python 3.9 或更高版本，推荐 Python 3.12。
 
+### 1. 安装依赖
+
 ```bash
 cd "/path/to/speak-room"
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
+
+### 2. 配置 API Key
 
 创建 `.env.local`：
 
@@ -72,15 +76,19 @@ OPENAI_API_KEY="sk-..."
 
 也可以先启动应用，再从“模型配置”页保存 Key。
 
-启动服务：
+### 3. 启动服务
 
 ```bash
 PORT=4000 .venv/bin/python -B server.py
 ```
 
-打开 `http://127.0.0.1:4000`。服务以前台方式运行，必须保持终端窗口开启；按 `Ctrl+C` 停止。
+服务以前台方式运行，需要保持终端窗口开启；按 `Ctrl+C` 停止。
 
-Windows 可以使用：
+### 4. 打开应用
+
+访问 [http://127.0.0.1:4000](http://127.0.0.1:4000)。
+
+Windows 启动命令：
 
 ```powershell
 $env:PORT=4000
@@ -118,7 +126,7 @@ PORT=4000
 
 ## 常见问题
 
-**网页打不开**
+### 网页打不开
 
 确认运行服务的终端仍然开启，并访问 `http://127.0.0.1:4000`。检查端口：
 
@@ -126,7 +134,7 @@ PORT=4000
 lsof -nP -iTCP:4000 -sTCP:LISTEN
 ```
 
-**端口被占用**
+### 端口被占用
 
 停止旧服务，或临时使用：
 
@@ -134,14 +142,14 @@ lsof -nP -iTCP:4000 -sTCP:LISTEN
 PORT=4001 .venv/bin/python -B server.py
 ```
 
-**Realtime 对话关闭或连接失败**
+### Realtime 对话关闭或连接失败
 
 刷新页面后重新开始一次新会话。
 
-**点评失败**
+### 点评失败
 
 录音会先保存在本机。进入“练习记录”，点击“重新点评”即可恢复。
 
-**没有麦克风权限**
+### 没有麦克风权限
 
 检查浏览器权限，并使用 `localhost`、`127.0.0.1` 或 HTTPS。

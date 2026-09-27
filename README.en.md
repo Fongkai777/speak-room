@@ -16,15 +16,23 @@ The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, 
 - Selectable voice and `0.9x`, `1.0x`, or `1.1x` speaking speed.
 - Live transcripts with saved mixed audio, user-only microphone audio, and conversation text.
 - Optional learning-memory reuse so a new session can reference background and long-term priorities.
-- Feedback across pronunciation, fluency, grammar, vocabulary, and task communication, followed by a server-calculated weighted total.
+- Generate pronunciation, fluency, and expression feedback after practice.
 
 ### Mandarin Reading
 
 - Random prompts from a Putonghua-test-style reading bank.
 - An explicit countdown, elapsed recording time, and live input level.
 - Separate Start Recording, End and Save, and Generate Feedback actions.
-- Feedback across reading accuracy, pronunciation clarity, tone control, fluency, and rhythm/breath.
-- Reading accuracy is calculated from the source and transcription; the server combines it with other dimensions into the final score.
+- Feedback focuses on reading accuracy, pronunciation clarity, tones, fluency, and rhythm.
+
+### Feedback And Scoring
+
+Feedback combines audio transcription, reference text, and low-confidence fragments into structured suggestions.
+
+- English: pronunciation 25%, fluency 25%, grammar 20%, vocabulary 15%, and communication 15%. A pronunciation score is not generated from text when user-only audio is unavailable.
+- Mandarin: reading accuracy 35%, pronunciation clarity 25%, tone control 15%, fluency 15%, and rhythm/breath 10%.
+
+Feedback is inferred from transcription and models; it is not professional phoneme, tone-curve, or tongue-position measurement.
 
 ### Records, Statistics, And Learning Advice
 
@@ -32,13 +40,16 @@ The backend uses **Python + FastAPI**, while the frontend uses plain HTML, CSS, 
 - Seekable audio, collapsed text, feedback review, reanalysis, and deletion for each record.
 - Separate total practice time for English and Mandarin plus a two-color daily duration chart.
 - English and Mandarin score-trend tabs with independent numbering and x-axes.
-- A monthly sidebar calendar using blue, red, or split-color squares for practice days.
 - Learning Advice analyzes all English transcripts for learned patterns, useful phrases, usages to avoid, recurring issues, and next steps.
 
-### Translation And Configuration
+### Practice Calendar And Translation
 
+- The calendar marks English and Mandarin practice dates with blue, red, or split-color squares.
 - Sidebar translation with auto-detect, Chinese-to-English, and English-to-Chinese modes.
 - Translation starts automatically after typing stops.
+
+### Model Configuration
+
 - Separate model selectors for realtime conversation, text/feedback, and translation.
 - The API key can be saved to `.env.local`.
 
@@ -103,15 +114,6 @@ For higher-accuracy transcription, set `OPENAI_TRANSCRIBE_MODEL` to `gpt-4o-tran
 │   └── styles.css
 └── .gitignore
 ```
-
-## Feedback And Scoring
-
-The feedback pipeline transcribes saved audio, then creates structured suggestions from transcripts, source text, and available low-confidence fragments.
-
-- English: pronunciation 25%, fluency 25%, grammar 20%, vocabulary 15%, and communication 15%. Pronunciation is not invented from text when user-only audio is unavailable.
-- Mandarin: reading accuracy 35%, pronunciation clarity 25%, tone control 15%, fluency 15%, and rhythm/breath 10%.
-
-This is transcription- and model-assisted practice feedback, not professional phoneme measurement, tone-curve analysis, or tongue-position sensing. Treat articulation details as coaching suggestions rather than definitive diagnosis.
 
 ## Troubleshooting
 

@@ -79,10 +79,10 @@ OPENAI_API_KEY="sk-..."
 ### 3. 启动服务
 
 ```bash
-PORT=4000 .venv/bin/python -B server.py
+./run.sh
 ```
 
-服务以前台方式运行，需要保持终端窗口开启；按 `Ctrl+C` 停止。
+脚本会停止当前项目占用同一端口的旧服务，再启动新服务。服务以前台方式运行，需要保持终端窗口开启；按 `Ctrl+C` 停止。
 
 ### 4. 打开应用
 
@@ -115,6 +115,7 @@ PORT=4000
 ├── server.py                 # FastAPI 服务、OpenAI 调用与本地存储
 ├── practice_content.json     # 中文素材、点评提示词与结构化输出格式
 ├── requirements.txt
+├── run.sh                    # 启动或重启本地服务
 ├── tests/
 │   └── test_server.py
 ├── public/
@@ -139,7 +140,7 @@ lsof -nP -iTCP:4000 -sTCP:LISTEN
 停止旧服务，或临时使用：
 
 ```bash
-PORT=4001 .venv/bin/python -B server.py
+PORT=4001 ./run.sh
 ```
 
 ### Realtime 对话关闭或连接失败

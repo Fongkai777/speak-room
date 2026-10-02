@@ -78,10 +78,10 @@ You can also start the app first and save the key from Model Configuration.
 ### 3. Start the Server
 
 ```bash
-PORT=4000 .venv/bin/python -B server.py
+./run.sh
 ```
 
-The server runs in the foreground, so keep that terminal open. Press `Ctrl+C` to stop it.
+The script stops an existing Speak Room process on the same port before starting a new one. The server runs in the foreground, so keep that terminal open. Press `Ctrl+C` to stop it.
 
 ### 4. Open the App
 
@@ -114,6 +114,7 @@ For higher-accuracy transcription, set `OPENAI_TRANSCRIBE_MODEL` to `gpt-4o-tran
 ├── server.py                 # FastAPI server, OpenAI calls, and local storage
 ├── practice_content.json     # Mandarin bank, prompts, and structured schemas
 ├── requirements.txt
+├── run.sh                    # Start or restart the local server
 ├── tests/
 │   └── test_server.py
 ├── public/
@@ -138,7 +139,7 @@ lsof -nP -iTCP:4000 -sTCP:LISTEN
 Stop the previous server or use another port:
 
 ```bash
-PORT=4001 .venv/bin/python -B server.py
+PORT=4001 ./run.sh
 ```
 
 ### Realtime Conversation Closes or Fails
